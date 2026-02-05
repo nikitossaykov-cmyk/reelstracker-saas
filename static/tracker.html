@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ReelsTracker Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+        * { font-family: 'Inter', sans-serif; }
+
+        body {
+            background: #0f0f13;
+            color: #e4e4e7;
+            min-height: 100vh;
+        }
+
+        /* Glassmorphism cards */
+        .glass {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            backdrop-filter: blur(20px);
+        }
+
+        .glass-hover:hover {
+            background: rgba(255, 255, 255, 0.07);
+            border-color: rgba(255, 255, 255, 0.1);
+        }
+
+        /* Gradient accents */
+        .accent-gradient {
+            background: linear-gradient(135deg, #8b5cf6, #ec4899, #f97316);
+        }
+
+        .accent-text {
+            background: linear-gradient(135deg, #a78bfa, #f472b6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* Sparkline container */
+        .sparkline-canvas {
+            width: 100%;
+            height: 40px;
+        }
+
+        /* Smooth transitions */
+        .card-transition {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .card-transition:hover {
+            transform: translateY(-2px);
+        }
+
+        /* Pulse animation */
+        @keyframes soft-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+        .soft-pulse { animation: soft-pulse 2s ease-in-out infinite; }
+
+        /* Viral glow */
+        .viral-glow {
+            box-shadow: 0 0 30px rgba(139, 92, 246, 0.15), 0 0 60px rgba(236, 72, 153, 0.08);
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+        /* Button styles */
+        .btn-primary {
+            background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+            transition: all 0.2s;
+        }
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #a78bfa, #8b5cf6);
+            box-shadow: 0 4px 20px rgba(139, 92, 246, 0.3);
+        }
+
+        .btn-ghost {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.08);
+            transition: all 0.2s;
+        }
+        .btn-ghost:hover {
+            background: rgba(255,255,255,0.1);
+            border-color: rgba(255,255,255,0.15);
+        }
+
+        .btn-danger {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            color: #fca5a5;
+            transition: all 0.2s;
+        }
+        .btn-danger:hover {
+            background: rgba(239, 68, 68, 0.2);
+            border-color: rgba(239, 68, 68, 0.4);
+        }
+
+        /* Fade in animation */
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .fade-in { animation: fadeInUp 0.5s ease-out; }
+
+        /* Modal overlay */
+        .modal-overlay {
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(8px);
+        }
+
+        /* Trend indicators */
+        .trend-up { color: #4ade80; }
+        .trend-down { color: #f87171; }
+        .trend-neutral { color: #71717a; }
+
+        /* Tariff badge */
+        .badge-pro { background: linear-gradient(135deg, #f59e0b, #ef4444); color: white; }
+        .badge-free { background: rgba(255,255,255,0.06); color: #a1a1aa; }
+    </style>
+</head>
+<body>
+
+    <!-- Header -->
+    <header class="sticky top-0 z-50 border-b border-white/5" style="background: rgba(15, 15, 19, 0.8); backdrop-filter: blur(20px);">
+        <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-lg accent-gradient flex items-center justify-center">
+                    <span class="text-white text-lg font-bold">R</span>
+                </div>
+                <div>
+                    <h1 class="text-white text-lg font-bold tracking-tight">ReelsTracker</h1>
+                    <p class="text-zinc-500 text-xs">SaaS v1.0</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-3">
+                <div id="syncStatus" class="text-xs text-zinc-400 bg-white/5 px-3 py-1.5 rounded-full border border-white/5">
+                    Загрузка...
+                </div>
+                <div id="tariffBadge" class="text-[10px] font-bold px-2.5 py-1 rounded-md badge-free">FREE</div>
+                <div class="flex items-center gap-2">
+                    <span id="userEmail" class="text-xs text-zinc-400 hidden sm:inline"></span>
+                    <button id="btnSettings" class="btn-ghost text-zinc-400 px-2.5 py-1.5 rounded-lg text-xs" title="Настройки">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                    </button>
+                    <button id="btnLogout" class="btn-ghost text-zinc-500 hover:text-red-400 px-2.5 py-1.5 rounded-lg text-xs" title="Выйти">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+                    </button>
+                </div>
+                <button id="btnAddReel" class="btn-primary text-white px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                    Добавить
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-6 py-8">
+
+        <!-- Stats Grid -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8 fade-in">
+            <div class="glass rounded-2xl p-5 card-transition">
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-zinc-500 text-xs font-medium uppercase tracking-wider">Рилсов</span>
+                    <div class="w-8 h-8 rounded-lg bg-violet-500/10 flex items-center justify-center">
+                        <svg class="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"/></svg>
+                    </div>
+                </div>
+                <div class="text-3xl font-bold text-white" id="statTotal">0</div>
+                <div class="mt-2"><canvas id="sparkTotal" class="sparkline-canvas"></canvas></div>
+            </div>
+
+            <div class="glass rounded-2xl p-5 card-transition">
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-zinc-500 text-xs font-medium uppercase tracking-wider">Просмотры</span>
+                    <div class="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                        <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                    </div>
+                </div>
+                <div class="text-3xl font-bold text-white" id="statViews">0</div>
+                <div id="statViewsTrend" class="text-xs mt-1 trend-neutral">-</div>
+            </div>
+
+            <div class="glass rounded-2xl p-5 card-transition">
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-zinc-500 text-xs font-medium uppercase tracking-wider">Лайки</span>
+                    <div class="w-8 h-8 rounded-lg bg-pink-500/10 flex items-center justify-center">
+                        <svg class="w-4 h-4 text-pink-400" fill="currentColor" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                    </div>
+                </div>
+                <div class="text-3xl font-bold text-white" id="statLikes">0</div>
+                <div id="statLikesTrend" class="text-xs mt-1 trend-neutral">-</div>
+            </div>
+
+            <div class="glass rounded-2xl p-5 card-transition">
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-zinc-500 text-xs font-medium uppercase tracking-wider">ER</span>
+                    <div class="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                        <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+                    </div>
+                </div>
+                <div class="text-3xl font-bold text-white"><span id="statER">0</span><span class="text-lg text-zinc-500">%</span></div>
+                <div id="statERLabel" class="text-xs mt-1 text-zinc-500">-</div>
+            </div>
+        </div>
+
+        <!-- Action Bar -->
+        <div class="flex items-center gap-3 mb-8 flex-wrap">
+            <div class="flex items-center gap-2">
+                <button id="btnParseAll" class="btn-primary text-white px-5 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    Спарсить все
+                </button>
+                <button id="btnRefresh" class="btn-ghost text-zinc-300 px-4 py-2.5 rounded-xl text-sm font-medium">
+                    Обновить
+                </button>
+            </div>
+            <div class="flex-1"></div>
+            <div id="parseStatus" class="text-xs text-zinc-500"></div>
+        </div>
+
+        <!-- Reels List -->
+        <div id="reelsList" class="space-y-4"></div>
+
+    </main>
+
+    <!-- Modal: Add Reel -->
+    <div id="modalAdd" class="hidden fixed inset-0 modal-overlay flex items-center justify-center p-4 z-50">
+        <div class="glass rounded-2xl max-w-lg w-full p-6 fade-in" style="background: #1a1a22; border: 1px solid rgba(255,255,255,0.08);">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-xl font-bold text-white">Новый рилс</h2>
+                <button id="btnCancelAdd" class="text-zinc-500 hover:text-white transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <div id="addError" class="hidden text-red-400 text-sm mb-4 bg-red-500/10 p-3 rounded-lg"></div>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs text-zinc-400 font-medium mb-2 uppercase tracking-wider">Платформа</label>
+                    <select id="inputPlatform" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-violet-500/50 transition-colors">
+                        <option value="instagram">Instagram</option>
+                        <option value="tiktok">TikTok</option>
+                        <option value="youtube">YouTube Shorts</option>
+                        <option value="vk">VK</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs text-zinc-400 font-medium mb-2 uppercase tracking-wider">Название</label>
+                    <input type="text" id="inputTitle" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-zinc-600 focus:outline-none focus:border-violet-500/50 transition-colors" placeholder="Например: Обзор товара">
+                </div>
+                <div>
+                    <label class="block text-xs text-zinc-400 font-medium mb-2 uppercase tracking-wider">Ссылка</label>
+                    <input type="url" id="inputUrl" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-zinc-600 focus:outline-none focus:border-violet-500/50 transition-colors" placeholder="https://...">
+                </div>
+                <button id="btnSaveReel" class="w-full btn-primary text-white py-3.5 rounded-xl font-semibold mt-2">
+                    Добавить рилс
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Chart -->
+    <div id="modalChart" class="hidden fixed inset-0 modal-overlay flex items-center justify-center p-4 z-50">
+        <div class="rounded-2xl max-w-4xl w-full p-6 max-h-[90vh] overflow-y-auto fade-in" style="background: #1a1a22; border: 1px solid rgba(255,255,255,0.08);">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-xl font-bold text-white" id="chartTitle">Динамика</h2>
+                <button id="btnCloseChart" class="text-zinc-500 hover:text-white transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6" id="growthIndicators"></div>
+            <div class="flex gap-2 mb-4">
+                <button class="chart-metric-btn active bg-violet-600 text-white px-4 py-2 rounded-lg text-xs font-semibold transition-all" data-metric="views">Просмотры</button>
+                <button class="chart-metric-btn bg-white/5 text-zinc-400 px-4 py-2 rounded-lg text-xs font-semibold transition-all hover:bg-white/10" data-metric="likes">Лайки</button>
+                <button class="chart-metric-btn bg-white/5 text-zinc-400 px-4 py-2 rounded-lg text-xs font-semibold transition-all hover:bg-white/10" data-metric="comments">Комменты</button>
+                <button class="chart-metric-btn bg-white/5 text-zinc-400 px-4 py-2 rounded-lg text-xs font-semibold transition-all hover:bg-white/10" data-metric="all">Все</button>
+            </div>
+            <div class="glass rounded-xl p-4" style="height: 350px;">
+                <canvas id="reelChart"></canvas>
+            </div>
+            <div class="mt-6">
+                <h3 class="text-sm font-semibold text-zinc-400 mb-3 uppercase tracking-wider">История парсинга</h3>
+                <div class="max-h-48 overflow-y-auto glass rounded-xl">
+                    <table class="w-full text-sm">
+                        <thead class="sticky top-0" style="background: #1a1a22;">
+                            <tr class="text-zinc-500 text-xs uppercase">
+                                <th class="p-3 text-left font-medium">Дата</th>
+                                <th class="p-3 text-right font-medium">Просмотры</th>
+                                <th class="p-3 text-right font-medium">Лайки</th>
+                                <th class="p-3 text-right font-medium">Комменты</th>
+                                <th class="p-3 text-right font-medium">Прирост</th>
+                            </tr>
+                        </thead>
+                        <tbody id="historyTable"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Settings (Telegram) -->
+    <div id="modalSettings" class="hidden fixed inset-0 modal-overlay flex items-center justify-center p-4 z-50">
+        <div class="rounded-2xl max-w-lg w-full p-6 fade-in" style="background: #1a1a22; border: 1px solid rgba(255,255,255,0.08);">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-lg font-bold text-white">Настройки Telegram</h2>
+                <button id="btnCloseSettings" class="text-zinc-500 hover:text-white transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <div id="settingsMsg" class="hidden text-sm mb-4 p-3 rounded-lg"></div>
+            <div class="space-y-4">
+                <label class="flex items-center gap-3 cursor-pointer">
+                    <input type="checkbox" id="tgEnabled" class="w-4 h-4 accent-violet-500">
+                    <span class="text-sm text-zinc-300">Включить уведомления</span>
+                </label>
+                <div>
+                    <label class="block text-xs text-zinc-400 font-medium mb-2">Bot Token</label>
+                    <input type="text" id="tgBotToken" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-zinc-600 focus:outline-none focus:border-violet-500/50" placeholder="123456:ABC-DEF...">
+                </div>
+                <div>
+                    <label class="block text-xs text-zinc-400 font-medium mb-2">Chat ID</label>
+                    <input type="text" id="tgChatId" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-zinc-600 focus:outline-none focus:border-violet-500/50" placeholder="-1001234567890">
+                </div>
+                <div class="flex gap-2">
+                    <button id="btnTestTg" class="flex-1 btn-ghost text-zinc-300 py-3 rounded-xl text-sm font-medium">
+                        Тест
+                    </button>
+                    <button id="btnSaveTg" class="flex-1 btn-primary text-white py-3 rounded-xl text-sm font-semibold">
+                        Сохранить
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ─── AUTH ───────────────────────────────────────────
+        const API = window.location.origin + '/api';
+        let accessToken = localStorage.getItem('access_token');
+        let currentUser = JSON.parse(localStorage.getItem('user') || 'null');
+        let reels = [];
+        let currentChart = null;
+        let currentChartReel = null;
+
+        function authHeaders() {
+            return {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + accessToken
+            };
+        }
+
+        async function authFetch(url, options = {}) {
+            options.headers = { ...authHeaders(), ...(options.headers || {}) };
+            let res = await fetch(url, options);
+
+            // Token expired — try refresh
+            if (res.status === 401) {
+                const refreshed = await refreshToken();
+                if (refreshed) {
+                    options.headers['Authorization'] = 'Bearer ' + accessToken;
+                    res = await fetch(url, options);
+                } else {
+                    logout();
+                    return null;
+                }
+            }
+            return res;
+        }
+
+        async function refreshToken() {
+            const rt = localStorage.getItem('refresh_token');
+            if (!rt) return false;
+            try {
+                const res = await fetch(API + '/auth/refresh', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ refresh_token: rt })
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    accessToken = data.access_token;
+                    localStorage.setItem('access_token', data.access_token);
+                    localStorage.setItem('refresh_token', data.refresh_token);
+                    localStorage.setItem('user', JSON.stringify(data.user));
+                    currentUser = data.user;
+                    return true;
+                }
+            } catch (e) {}
+            return false;
+        }
+
+        function logout() {
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('refresh_token');
+            localStorage.removeItem('user');
+            window.location.href = '/login.html';
+        }
+
+        // Check auth on load
+        if (!accessToken) {
+            window.location.href = '/login.html';
+        }
+
+        // ─── Elements ──────────────────────────────────────
+        const modalAdd = document.getElementById('modalAdd');
+        const modalChart = document.getElementById('modalChart');
+        const modalSettings = document.getElementById('modalSettings');
+        const reelsList = document.getElementById('reelsList');
+        const syncStatus = document.getElementById('syncStatus');
+
+        // ─── User Info ─────────────────────────────────────
+        function updateUserUI() {
+            if (currentUser) {
+                document.getElementById('userEmail').textContent = currentUser.email;
+                const badge = document.getElementById('tariffBadge');
+                if (currentUser.tariff === 'pro') {
+                    badge.textContent = 'PRO';
+                    badge.className = 'text-[10px] font-bold px-2.5 py-1 rounded-md badge-pro';
+                } else {
+                    badge.textContent = 'FREE';
+                    badge.className = 'text-[10px] font-bold px-2.5 py-1 rounded-md badge-free';
+                }
+            }
+        }
+        updateUserUI();
+
+        // ─── Event Listeners ───────────────────────────────
+        document.getElementById('btnAddReel').addEventListener('click', () => { document.getElementById('addError').classList.add('hidden'); modalAdd.classList.remove('hidden'); });
+        document.getElementById('btnCancelAdd').addEventListener('click', () => { modalAdd.classList.add('hidden'); clearForm(); });
+        document.getElementById('btnSaveReel').addEventListener('click', addReel);
+        document.getElementById('btnRefresh').addEventListener('click', loadData);
+        document.getElementById('btnParseAll').addEventListener('click', parseAllReels);
+        document.getElementById('btnLogout').addEventListener('click', logout);
+        document.getElementById('btnSettings').addEventListener('click', openSettings);
+        document.getElementById('btnCloseSettings').addEventListener('click', () => modalSettings.classList.add('hidden'));
+        document.getElementById('btnSaveTg').addEventListener('click', saveTelegramSettings);
+        document.getElementById('btnTestTg').addEventListener('click', testTelegram);
+        document.getElementById('btnCloseChart').addEventListener('click', () => {
+            modalChart.classList.add('hidden');
+            if (currentChart) { currentChart.destroy(); currentChart = null; }
+        });
+
+        document.querySelectorAll('.chart-metric-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelectorAll('.chart-metric-btn').forEach(b => {
+                    b.className = 'chart-metric-btn bg-white/5 text-zinc-400 px-4 py-2 rounded-lg text-xs font-semibold transition-all hover:bg-white/10';
+                });
+                e.target.className = 'chart-metric-btn active bg-violet-600 text-white px-4 py-2 rounded-lg text-xs font-semibold transition-all';
+                if (currentChartReel) renderChart(currentChartReel, e.target.dataset.metric);
+            });
+        });
+
+        // ─── Sync Status ──────────────────────────────────
+        function setSyncStatus(text, type = 'normal') {
+            syncStatus.textContent = text;
+            syncStatus.className = 'text-xs px-3 py-1.5 rounded-full border ' + {
+                'normal': 'text-zinc-400 bg-white/5 border-white/5',
+                'success': 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
+                'error': 'text-red-400 bg-red-500/10 border-red-500/20',
+                'pulse': 'text-violet-400 bg-violet-500/10 border-violet-500/20 soft-pulse',
+                'warning': 'text-amber-400 bg-amber-500/10 border-amber-500/20'
+            }[type];
+        }
+
+        // ─── Load Data ────────────────────────────────────
+        async function loadData() {
+            try {
+                setSyncStatus('Загрузка...', 'pulse');
+                const res = await authFetch(API + '/reels');
+                if (!res) return;
+
+                if (res.ok) {
+                    reels = await res.json();
+                    // Map API format to UI format
+                    reels = reels.map(r => ({
+                        ...r,
+                        history: (r.history || []).map(h => ({
+                            views: h.views,
+                            likes: h.likes,
+                            comments: h.comments,
+                            shares: h.shares,
+                            date: h.parsed_at
+                        }))
+                    }));
+                    setSyncStatus(`${reels.length} рилсов`, 'success');
+                } else {
+                    setSyncStatus('Ошибка загрузки', 'error');
+                }
+
+                // Load parse status
+                const statusRes = await authFetch(API + '/parse/status');
+                if (statusRes && statusRes.ok) {
+                    const status = await statusRes.json();
+                    const el = document.getElementById('parseStatus');
+                    if (status.pending > 0 || status.running > 0) {
+                        el.textContent = `В очереди: ${status.pending} | Парсится: ${status.running}`;
+                    } else if (status.last_completed) {
+                        const d = new Date(status.last_completed);
+                        el.textContent = `Последний: ${d.toLocaleString('ru-RU')}`;
+                    } else {
+                        el.textContent = '';
+                    }
+                }
+
+                render();
+            } catch (error) {
+                console.error('Load error:', error);
+                setSyncStatus('Ошибка сети', 'error');
+            }
+        }
+
+        function clearForm() {
+            document.getElementById('inputTitle').value = '';
+            document.getElementById('inputUrl').value = '';
+        }
+
+        // ─── Add Reel ─────────────────────────────────────
+        async function addReel() {
+            const title = document.getElementById('inputTitle').value.trim();
+            const url = document.getElementById('inputUrl').value.trim();
+            const platform = document.getElementById('inputPlatform').value;
+            const errEl = document.getElementById('addError');
+
+            if (!title || !url) {
+                errEl.textContent = 'Заполните название и ссылку!';
+                errEl.classList.remove('hidden');
+                return;
+            }
+
+            try {
+                const res = await authFetch(API + '/reels', {
+                    method: 'POST',
+                    body: JSON.stringify({ title, url, platform })
+                });
+
+                if (!res) return;
+
+                if (res.ok) {
+                    modalAdd.classList.add('hidden');
+                    clearForm();
+                    setSyncStatus('Рилс добавлен!', 'success');
+                    await loadData();
+                } else {
+                    const data = await res.json();
+                    errEl.textContent = data.detail || 'Ошибка добавления';
+                    errEl.classList.remove('hidden');
+                }
+            } catch (e) {
+                errEl.textContent = 'Ошибка сети';
+                errEl.classList.remove('hidden');
+            }
+        }
+
+        // ─── Delete ───────────────────────────────────────
+        async function deleteReel(id) {
+            if (!confirm('Удалить этот рилс?')) return;
+            const res = await authFetch(API + '/reels/' + id, { method: 'DELETE' });
+            if (res && (res.ok || res.status === 204)) {
+                setSyncStatus('Рилс удален', 'success');
+                await loadData();
+            }
+        }
+
+        // ─── Toggle ──────────────────────────────────────
+        async function toggleReel(id) {
+            const reel = reels.find(r => r.id === id);
+            if (!reel) return;
+            await authFetch(API + '/reels/' + id, {
+                method: 'PUT',
+                body: JSON.stringify({ enabled: !reel.enabled })
+            });
+            await loadData();
+        }
+
+        // ─── Parse ───────────────────────────────────────
+        async function parseAllReels() {
+            if (reels.length === 0) return;
+            setSyncStatus('Парсинг...', 'pulse');
+            try {
+                const res = await authFetch(API + '/parse', { method: 'POST' });
+                if (res && res.ok) {
+                    const data = await res.json();
+                    setSyncStatus(data.message, 'success');
+                    // Refresh in 10s to see results
+                    setTimeout(loadData, 10000);
+                } else if (res) {
+                    const data = await res.json();
+                    setSyncStatus(data.detail || 'Ошибка', 'error');
+                }
+            } catch (e) {
+                setSyncStatus('Ошибка сети', 'error');
+            }
+        }
+
+        async function parseSingle(id) {
+            setSyncStatus('Парсинг...', 'pulse');
+            try {
+                const res = await authFetch(API + '/parse?reel_id=' + id, { method: 'POST' });
+                if (res && res.ok) {
+                    setSyncStatus('В очереди', 'success');
+                    setTimeout(loadData, 10000);
+                }
+            } catch (e) {}
+        }
+
+        // ─── Telegram Settings ───────────────────────────
+        async function openSettings() {
+            const res = await authFetch(API + '/settings/telegram');
+            if (res && res.ok) {
+                const s = await res.json();
+                document.getElementById('tgEnabled').checked = s.enabled;
+                document.getElementById('tgBotToken').value = s.bot_token || '';
+                document.getElementById('tgChatId').value = s.chat_id || '';
+            }
+            document.getElementById('settingsMsg').classList.add('hidden');
+            modalSettings.classList.remove('hidden');
+        }
+
+        async function saveTelegramSettings() {
+            const data = {
+                enabled: document.getElementById('tgEnabled').checked,
+                bot_token: document.getElementById('tgBotToken').value.trim(),
+                chat_id: document.getElementById('tgChatId').value.trim()
+            };
+            const res = await authFetch(API + '/settings/telegram', {
+                method: 'PUT',
+                body: JSON.stringify(data)
+            });
+            const msgEl = document.getElementById('settingsMsg');
+            if (res && res.ok) {
+                msgEl.textContent = 'Настройки сохранены!';
+                msgEl.className = 'text-sm mb-4 p-3 rounded-lg text-emerald-400 bg-emerald-500/10';
+            } else {
+                msgEl.textContent = 'Ошибка сохранения';
+                msgEl.className = 'text-sm mb-4 p-3 rounded-lg text-red-400 bg-red-500/10';
+            }
+            msgEl.classList.remove('hidden');
+        }
+
+        async function testTelegram() {
+            const msgEl = document.getElementById('settingsMsg');
+            msgEl.textContent = 'Отправка тестового сообщения...';
+            msgEl.className = 'text-sm mb-4 p-3 rounded-lg text-violet-400 bg-violet-500/10';
+            msgEl.classList.remove('hidden');
+
+            const res = await authFetch(API + '/settings/telegram/test', { method: 'POST' });
+            if (res && res.ok) {
+                const data = await res.json();
+                if (data.success) {
+                    msgEl.textContent = 'Тест пройден! Проверьте Telegram.';
+                    msgEl.className = 'text-sm mb-4 p-3 rounded-lg text-emerald-400 bg-emerald-500/10';
+                } else {
+                    msgEl.textContent = data.error || 'Ошибка теста';
+                    msgEl.className = 'text-sm mb-4 p-3 rounded-lg text-red-400 bg-red-500/10';
+                }
+            }
+        }
+
+        // ─── Helpers ─────────────────────────────────────
+        function calcER(reel) {
+            if (!reel.views || reel.views === 0) return 0;
+            const total = (reel.likes || 0) + (reel.comments || 0) + (reel.shares || 0);
+            return ((total / reel.views) * 100).toFixed(2);
+        }
+
+        function fmtNum(n) {
+            if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+            if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+            return n.toLocaleString();
+        }
+
+        function getTrend(history, key) {
+            if (!history || history.length < 2) return { value: 0, text: '-', class: 'trend-neutral' };
+            const last = history[history.length - 1][key];
+            const prev = history[history.length - 2][key];
+            const diff = last - prev;
+            if (diff > 0) return { value: diff, text: `+${fmtNum(diff)}`, class: 'trend-up' };
+            if (diff < 0) return { value: diff, text: fmtNum(diff), class: 'trend-down' };
+            return { value: 0, text: '=', class: 'trend-neutral' };
+        }
+
+        function calcGrowth(history) {
+            if (!history || history.length < 2) return { hasData: false };
+            const first = history[0];
+            const last = history[history.length - 1];
+            const prev = history[history.length - 2];
+            const totalViews = last.views - first.views;
+            const totalLikes = last.likes - first.likes;
+            const lastDiff = last.views - prev.views;
+            const firstDate = new Date(first.date);
+            const lastDate = new Date(last.date);
+            const totalMs = lastDate - firstDate;
+            const totalHours = totalMs / (1000 * 60 * 60);
+            const perHour = totalHours > 0 ? Math.round(totalViews / totalHours) : 0;
+            let trackingTime;
+            if (totalHours < 1) trackingTime = Math.round(totalMs / (1000 * 60)) + ' мин';
+            else if (totalHours < 24) trackingTime = Math.round(totalHours) + ' ч';
+            else { const d = Math.floor(totalHours / 24); const h = Math.round(totalHours % 24); trackingTime = d + ' д' + (h > 0 ? ' ' + h + ' ч' : ''); }
+            return { hasData: true, totalViews, totalLikes, lastDiff, perHour, trackingTime, totalPoints: history.length };
+        }
+
+        function drawSparkline(canvasId, data, color = '#8b5cf6') {
+            const canvas = document.getElementById(canvasId);
+            if (!canvas || data.length < 2) return;
+            const ctx = canvas.getContext('2d');
+            canvas.width = canvas.offsetWidth * 2;
+            canvas.height = canvas.offsetHeight * 2;
+            ctx.scale(2, 2);
+            const w = canvas.offsetWidth, h = canvas.offsetHeight;
+            const max = Math.max(...data), min = Math.min(...data), range = max - min || 1;
+            ctx.clearRect(0, 0, w, h);
+            ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.lineJoin = 'round';
+            data.forEach((val, i) => {
+                const x = (i / (data.length - 1)) * w;
+                const y = h - ((val - min) / range) * (h - 4) - 2;
+                i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+            const gradient = ctx.createLinearGradient(0, 0, 0, h);
+            gradient.addColorStop(0, color + '20'); gradient.addColorStop(1, color + '00');
+            ctx.lineTo(w, h); ctx.lineTo(0, h); ctx.fillStyle = gradient; ctx.fill();
+        }
+
+        function platformBadge(platform) {
+            const map = {
+                instagram: { icon: 'IG', color: 'bg-gradient-to-r from-purple-500 to-pink-500' },
+                tiktok: { icon: 'TT', color: 'bg-zinc-800' },
+                youtube: { icon: 'YT', color: 'bg-red-600' },
+                vk: { icon: 'VK', color: 'bg-blue-600' }
+            };
+            const p = map[platform] || { icon: '?', color: 'bg-zinc-700' };
+            return `<span class="${p.color} text-white text-[10px] font-bold px-2 py-0.5 rounded-md uppercase">${p.icon}</span>`;
+        }
+
+        // ─── Render ──────────────────────────────────────
+        function render() {
+            const total = reels.length;
+            const totalViews = reels.reduce((s, r) => s + (r.views || 0), 0);
+            const totalLikes = reels.reduce((s, r) => s + (r.likes || 0), 0);
+            const avgER = total > 0 ? (reels.reduce((s, r) => s + parseFloat(calcER(r)), 0) / total).toFixed(2) : 0;
+
+            document.getElementById('statTotal').textContent = total;
+            document.getElementById('statViews').textContent = fmtNum(totalViews);
+            document.getElementById('statLikes').textContent = fmtNum(totalLikes);
+            document.getElementById('statER').textContent = avgER;
+
+            const erLabel = document.getElementById('statERLabel');
+            if (avgER >= 5) erLabel.innerHTML = '<span class="text-emerald-400">Отличный</span> <span class="text-zinc-600">| (L+C+S)/V</span>';
+            else if (avgER >= 2) erLabel.innerHTML = '<span class="text-zinc-400">Хороший</span> <span class="text-zinc-600">| (L+C+S)/V</span>';
+            else erLabel.innerHTML = '<span class="text-zinc-500">Можно лучше</span> <span class="text-zinc-600">| (L+C+S)/V</span>';
+
+            if (reels.length === 0) {
+                reelsList.innerHTML = `
+                    <div class="glass rounded-2xl p-16 text-center fade-in">
+                        <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-white/5 flex items-center justify-center">
+                            <svg class="w-8 h-8 text-zinc-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"/></svg>
+                        </div>
+                        <p class="text-zinc-400 text-sm mb-1">Пока нет рилсов</p>
+                        <p class="text-zinc-600 text-xs">Нажмите "Добавить" чтобы начать отслеживание</p>
+                    </div>`;
+                return;
+            }
+
+            const sorted = [...reels].sort((a, b) => parseFloat(calcER(b)) - parseFloat(calcER(a)));
+
+            reelsList.innerHTML = sorted.map((reel, index) => {
+                const er = parseFloat(calcER(reel));
+                const history = reel.history || [];
+                const viewsTrend = getTrend(history, 'views');
+                const hasHistory = history.length >= 2;
+                const sparkData = history.slice(-20).map(h => h.views);
+                const growth = calcGrowth(history);
+                const isViral = growth.hasData && growth.perHour > 500;
+
+                return `
+                    <div class="glass rounded-2xl p-6 card-transition fade-in ${isViral ? 'viral-glow' : ''}" style="animation-delay: ${index * 0.05}s">
+                        <div class="flex items-start justify-between mb-5">
+                            <div class="flex items-start gap-3 flex-1 min-w-0">
+                                <div class="w-11 h-11 rounded-xl ${isViral ? 'accent-gradient' : 'bg-white/5'} flex items-center justify-center flex-shrink-0 mt-0.5">
+                                    <span class="text-lg">${isViral ? '🔥' : '📱'}</span>
+                                </div>
+                                <div class="min-w-0 flex-1">
+                                    <div class="flex items-center gap-2 mb-1 flex-wrap">
+                                        ${platformBadge(reel.platform)}
+                                        ${isViral ? '<span class="bg-emerald-500/15 text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded-md">VIRAL</span>' : ''}
+                                        ${!reel.enabled ? '<span class="bg-zinc-700/50 text-zinc-500 text-[10px] font-bold px-2 py-0.5 rounded-md">ПАУЗА</span>' : ''}
+                                    </div>
+                                    <h3 class="text-white font-semibold text-base truncate">${reel.title}</h3>
+                                    <a href="${reel.url.startsWith('http') ? reel.url : '#'}" target="_blank" class="text-zinc-500 hover:text-violet-400 text-xs transition-colors inline-flex items-center gap-1 mt-0.5">
+                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                                        Открыть
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-5 gap-3 mb-5">
+                            <div class="text-center">
+                                <div class="text-zinc-500 text-[10px] font-medium uppercase mb-1">Просмотры</div>
+                                <div class="text-white font-bold text-sm">${fmtNum(reel.views || 0)}</div>
+                                ${hasHistory ? `<div class="text-[10px] ${viewsTrend.class}">${viewsTrend.text}</div>` : ''}
+                            </div>
+                            <div class="text-center">
+                                <div class="text-zinc-500 text-[10px] font-medium uppercase mb-1">Лайки</div>
+                                <div class="text-white font-bold text-sm">${fmtNum(reel.likes || 0)}</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-zinc-500 text-[10px] font-medium uppercase mb-1">Комменты</div>
+                                <div class="text-white font-bold text-sm">${fmtNum(reel.comments || 0)}</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-zinc-500 text-[10px] font-medium uppercase mb-1">Репосты</div>
+                                <div class="text-white font-bold text-sm">${fmtNum(reel.shares || 0)}</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-zinc-500 text-[10px] font-medium uppercase mb-1">ER</div>
+                                <div class="font-bold text-sm ${er >= 5 ? 'text-emerald-400' : 'text-violet-400'}">${er}%</div>
+                                <div class="text-zinc-600 text-[8px] mt-0.5">(L+C+S)/V</div>
+                            </div>
+                        </div>
+
+                        ${growth.hasData ? `
+                        <div class="grid grid-cols-4 gap-2 mb-5">
+                            <div class="bg-white/[0.03] rounded-xl p-3 text-center">
+                                <div class="text-zinc-600 text-[9px] font-medium uppercase mb-1">Всего прирост</div>
+                                <div class="font-bold text-sm ${growth.totalViews > 0 ? 'text-emerald-400' : 'text-zinc-500'}">${growth.totalViews > 0 ? '+' : ''}${fmtNum(growth.totalViews)}</div>
+                                <div class="text-zinc-600 text-[9px] mt-0.5">просмотров</div>
+                            </div>
+                            <div class="bg-white/[0.03] rounded-xl p-3 text-center">
+                                <div class="text-zinc-600 text-[9px] font-medium uppercase mb-1">В час</div>
+                                <div class="font-bold text-sm ${growth.perHour > 100 ? 'text-orange-400' : growth.perHour > 0 ? 'text-blue-400' : 'text-zinc-500'}">${growth.perHour > 0 ? '+' : ''}${fmtNum(growth.perHour)}</div>
+                                <div class="text-zinc-600 text-[9px] mt-0.5">${growth.perHour > 1000 ? 'быстро!' : 'просм/ч'}</div>
+                            </div>
+                            <div class="bg-white/[0.03] rounded-xl p-3 text-center">
+                                <div class="text-zinc-600 text-[9px] font-medium uppercase mb-1">Последний</div>
+                                <div class="font-bold text-sm ${growth.lastDiff > 0 ? 'text-emerald-400' : growth.lastDiff === 0 ? 'text-zinc-500' : 'text-red-400'}">${growth.lastDiff > 0 ? '+' : ''}${growth.lastDiff === 0 ? '=' : fmtNum(growth.lastDiff)}</div>
+                                <div class="text-zinc-600 text-[9px] mt-0.5">за цикл</div>
+                            </div>
+                            <div class="bg-white/[0.03] rounded-xl p-3 text-center">
+                                <div class="text-zinc-600 text-[9px] font-medium uppercase mb-1">Трекинг</div>
+                                <div class="font-bold text-sm text-violet-400">${growth.trackingTime}</div>
+                                <div class="text-zinc-600 text-[9px] mt-0.5">${growth.totalPoints} точек</div>
+                            </div>
+                        </div>
+                        ` : `
+                        <div class="bg-white/[0.02] rounded-xl p-3 mb-5 text-center">
+                            <span class="text-zinc-600 text-xs">Прирост появится после нескольких циклов парсинга</span>
+                        </div>
+                        `}
+
+                        ${sparkData.length >= 2 ? `<div class="mb-5 px-1"><canvas id="spark-${reel.id}" class="sparkline-canvas" style="height: 32px;"></canvas></div>` : ''}
+
+                        <div class="flex items-center gap-2">
+                            <button onclick="openChart(${reel.id})" class="flex-1 btn-ghost text-zinc-300 py-2.5 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                                Динамика
+                            </button>
+                            <button onclick="parseSingle(${reel.id})" class="btn-ghost text-zinc-400 px-3 py-2.5 rounded-xl text-xs" title="Парсить">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                            </button>
+                            <button onclick="toggleReel(${reel.id})" class="btn-ghost px-3 py-2.5 rounded-xl text-xs ${reel.enabled ? 'text-violet-400' : 'text-zinc-600'}" title="${reel.enabled ? 'Приостановить' : 'Включить'}">
+                                ${reel.enabled ? '<svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>' : '<svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>'}
+                            </button>
+                            <button onclick="deleteReel(${reel.id})" class="btn-ghost text-zinc-600 hover:text-red-400 px-3 py-2.5 rounded-xl text-xs" title="Удалить">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                            </button>
+                        </div>
+                    </div>`;
+            }).join('');
+
+            requestAnimationFrame(() => {
+                sorted.forEach(reel => {
+                    const sparkData = (reel.history || []).slice(-20).map(h => h.views);
+                    if (sparkData.length >= 2) {
+                        const growth = calcGrowth(reel.history);
+                        const isViral = growth.hasData && growth.perHour > 500;
+                        drawSparkline(`spark-${reel.id}`, sparkData, isViral ? '#4ade80' : '#8b5cf6');
+                    }
+                });
+            });
+        }
+
+        // ─── Chart ───────────────────────────────────────
+        async function openChart(id) {
+            const reel = reels.find(r => r.id === id);
+            if (!reel) return;
+
+            currentChartReel = reel;
+            document.getElementById('chartTitle').textContent = reel.title;
+
+            // Load full history from API
+            try {
+                const res = await authFetch(API + '/reels/' + id + '/history?limit=500');
+                if (res && res.ok) {
+                    const historyData = await res.json();
+                    currentChartReel.history = historyData.map(h => ({
+                        views: h.views, likes: h.likes, comments: h.comments, shares: h.shares, date: h.parsed_at
+                    }));
+                }
+            } catch (e) {}
+
+            renderGrowthIndicators(currentChartReel);
+            renderChart(currentChartReel, 'views');
+            renderHistoryTable(currentChartReel);
+
+            document.querySelectorAll('.chart-metric-btn').forEach(b => {
+                b.className = 'chart-metric-btn bg-white/5 text-zinc-400 px-4 py-2 rounded-lg text-xs font-semibold transition-all hover:bg-white/10';
+            });
+            document.querySelector('.chart-metric-btn[data-metric="views"]').className = 'chart-metric-btn active bg-violet-600 text-white px-4 py-2 rounded-lg text-xs font-semibold transition-all';
+            modalChart.classList.remove('hidden');
+        }
+
+        function renderGrowthIndicators(reel) {
+            const history = reel.history || [];
+            const container = document.getElementById('growthIndicators');
+            if (history.length < 2) { container.innerHTML = '<div class="col-span-4 text-center text-zinc-500 py-4 text-sm">Недостаточно данных</div>'; return; }
+            const first = history[0], last = history[history.length - 1];
+            const vg = last.views - first.views, lg = last.likes - first.likes, cg = last.comments - first.comments;
+            const hours = (new Date(last.date) - new Date(first.date)) / (1000 * 60 * 60);
+            const vph = hours > 0 ? Math.round(vg / hours) : 0;
+            container.innerHTML = `
+                <div class="glass rounded-xl p-3 text-center"><div class="text-zinc-500 text-[10px] uppercase mb-1">Просмотры</div><div class="font-bold text-sm ${vg > 0 ? 'text-emerald-400' : 'text-zinc-400'}">${vg > 0 ? '+' : ''}${fmtNum(vg)}</div></div>
+                <div class="glass rounded-xl p-3 text-center"><div class="text-zinc-500 text-[10px] uppercase mb-1">Лайки</div><div class="font-bold text-sm ${lg > 0 ? 'text-emerald-400' : 'text-zinc-400'}">${lg > 0 ? '+' : ''}${fmtNum(lg)}</div></div>
+                <div class="glass rounded-xl p-3 text-center"><div class="text-zinc-500 text-[10px] uppercase mb-1">Комменты</div><div class="font-bold text-sm ${cg > 0 ? 'text-emerald-400' : 'text-zinc-400'}">${cg > 0 ? '+' : ''}${fmtNum(cg)}</div></div>
+                <div class="glass rounded-xl p-3 text-center ${vph > 1000 ? 'viral-glow' : ''}"><div class="text-zinc-500 text-[10px] uppercase mb-1">${vph > 1000 ? '🔥' : ''} В час</div><div class="font-bold text-sm ${vph > 1000 ? 'text-orange-400' : 'text-violet-400'}">${vph > 0 ? '+' : ''}${fmtNum(vph)}</div></div>`;
+        }
+
+        function renderChart(reel, metric) {
+            const history = reel.history || [];
+            if (currentChart) currentChart.destroy();
+            const ctx = document.getElementById('reelChart').getContext('2d');
+            if (history.length === 0) { ctx.font = '14px Inter'; ctx.fillStyle = '#52525b'; ctx.textAlign = 'center'; ctx.fillText('Нет данных', ctx.canvas.width / 2, ctx.canvas.height / 2); return; }
+            const labels = history.map(h => { const d = new Date(h.date); return d.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }); });
+            const datasets = [];
+            const colors = { views: { b: '#818cf8', bg: 'rgba(129,140,248,0.1)' }, likes: { b: '#f472b6', bg: 'rgba(244,114,182,0.1)' }, comments: { b: '#34d399', bg: 'rgba(52,211,153,0.1)' } };
+            if (metric === 'views' || metric === 'all') datasets.push({ label: 'Просмотры', data: history.map(h => h.views), borderColor: colors.views.b, backgroundColor: colors.views.bg, fill: metric !== 'all', tension: 0.4, pointRadius: 3, borderWidth: 2 });
+            if (metric === 'likes' || metric === 'all') datasets.push({ label: 'Лайки', data: history.map(h => h.likes), borderColor: colors.likes.b, backgroundColor: colors.likes.bg, fill: metric !== 'all', tension: 0.4, pointRadius: 3, borderWidth: 2 });
+            if (metric === 'comments' || metric === 'all') datasets.push({ label: 'Комментарии', data: history.map(h => h.comments), borderColor: colors.comments.b, backgroundColor: colors.comments.bg, fill: metric !== 'all', tension: 0.4, pointRadius: 3, borderWidth: 2 });
+            currentChart = new Chart(ctx, { type: 'line', data: { labels, datasets }, options: {
+                responsive: true, maintainAspectRatio: false, interaction: { intersect: false, mode: 'index' },
+                plugins: { legend: { display: metric === 'all', labels: { color: '#a1a1aa', font: { size: 11 } } }, tooltip: { backgroundColor: '#27272a', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1, titleColor: '#e4e4e7', bodyColor: '#a1a1aa', cornerRadius: 8, padding: 12 } },
+                scales: { x: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#52525b', font: { size: 10 }, maxRotation: 45 } }, y: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#52525b', font: { size: 10 }, callback: v => v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e3 ? (v/1e3).toFixed(1)+'K' : v } } }
+            }});
+        }
+
+        function renderHistoryTable(reel) {
+            const history = reel.history || [];
+            const tbody = document.getElementById('historyTable');
+            if (history.length === 0) { tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-zinc-600 text-sm">Нет данных</td></tr>'; return; }
+            const reversed = [...history].reverse();
+            tbody.innerHTML = reversed.map((h, i) => {
+                const prev = reversed[i + 1];
+                const growth = prev ? h.views - prev.views : 0;
+                const gc = growth > 0 ? 'trend-up' : (growth < 0 ? 'trend-down' : 'trend-neutral');
+                return `<tr class="border-t border-white/5 hover:bg-white/[0.02] transition-colors">
+                    <td class="p-3 text-zinc-500 text-xs">${new Date(h.date).toLocaleString('ru-RU')}</td>
+                    <td class="p-3 text-right text-zinc-300 text-xs font-medium">${h.views.toLocaleString()}</td>
+                    <td class="p-3 text-right text-zinc-400 text-xs">${h.likes.toLocaleString()}</td>
+                    <td class="p-3 text-right text-zinc-400 text-xs">${h.comments.toLocaleString()}</td>
+                    <td class="p-3 text-right text-xs font-semibold ${gc}">${growth !== 0 ? (growth > 0 ? '+' : '') + growth.toLocaleString() : '-'}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        // ─── Init ────────────────────────────────────────
+        loadData();
+        // Auto-refresh every 60s
+        setInterval(loadData, 60000);
+    </script>
+</body>
+</html>

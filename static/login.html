@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ReelsTracker — Вход</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #0f0f13;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            color: #e4e4e7;
+        }
+
+        .auth-container {
+            width: 100%;
+            max-width: 420px;
+            padding: 20px;
+        }
+
+        .logo {
+            text-align: center;
+            margin-bottom: 36px;
+        }
+
+        .logo h1 {
+            font-size: 28px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #a855f7, #6366f1);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .logo p {
+            color: #71717a;
+            font-size: 14px;
+            margin-top: 6px;
+        }
+
+        .card {
+            background: rgba(24, 24, 30, 0.9);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 16px;
+            padding: 32px;
+            backdrop-filter: blur(20px);
+        }
+
+        .tabs {
+            display: flex;
+            gap: 4px;
+            background: rgba(255,255,255,0.04);
+            border-radius: 10px;
+            padding: 4px;
+            margin-bottom: 28px;
+        }
+
+        .tab {
+            flex: 1;
+            padding: 10px;
+            text-align: center;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+            background: none;
+            color: #71717a;
+        }
+
+        .tab.active {
+            background: rgba(168, 85, 247, 0.2);
+            color: #a855f7;
+        }
+
+        .tab:hover:not(.active) {
+            color: #a1a1aa;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 13px;
+            color: #a1a1aa;
+            margin-bottom: 6px;
+            font-weight: 500;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px 14px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 10px;
+            color: #e4e4e7;
+            font-size: 15px;
+            transition: border-color 0.2s;
+            outline: none;
+        }
+
+        .form-group input:focus {
+            border-color: rgba(168, 85, 247, 0.5);
+        }
+
+        .form-group input::placeholder {
+            color: #52525b;
+        }
+
+        .btn-primary {
+            width: 100%;
+            padding: 13px;
+            background: linear-gradient(135deg, #a855f7, #6366f1);
+            border: none;
+            border-radius: 10px;
+            color: white;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .error-msg {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-size: 13px;
+            color: #f87171;
+            margin-bottom: 16px;
+            display: none;
+        }
+
+        .success-msg {
+            background: rgba(34, 197, 94, 0.1);
+            border: 1px solid rgba(34, 197, 94, 0.2);
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-size: 13px;
+            color: #4ade80;
+            margin-bottom: 16px;
+            display: none;
+        }
+
+        .form-section { display: none; }
+        .form-section.active { display: block; }
+
+        .divider {
+            text-align: center;
+            color: #52525b;
+            font-size: 12px;
+            margin: 20px 0;
+            position: relative;
+        }
+
+        .divider::before, .divider::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            width: 40%;
+            height: 1px;
+            background: rgba(255,255,255,0.06);
+        }
+
+        .divider::before { left: 0; }
+        .divider::after { right: 0; }
+
+        .footer {
+            text-align: center;
+            margin-top: 24px;
+            font-size: 13px;
+            color: #52525b;
+        }
+
+        /* Loading spinner */
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 0.6s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .card { animation: fadeIn 0.4s ease; }
+    </style>
+</head>
+<body>
+    <div class="auth-container">
+        <div class="logo">
+            <h1>ReelsTracker</h1>
+            <p>Трекер метрик рилсов</p>
+        </div>
+
+        <div class="card">
+            <div class="tabs">
+                <button class="tab active" onclick="switchTab('login')">Вход</button>
+                <button class="tab" onclick="switchTab('register')">Регистрация</button>
+            </div>
+
+            <div id="error" class="error-msg"></div>
+            <div id="success" class="success-msg"></div>
+
+            <!-- Login Form -->
+            <div id="login-form" class="form-section active">
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="login-email" placeholder="you@example.com" autocomplete="email">
+                </div>
+                <div class="form-group">
+                    <label>Пароль</label>
+                    <input type="password" id="login-password" placeholder="Ваш пароль" autocomplete="current-password">
+                </div>
+                <button class="btn-primary" id="login-btn" onclick="handleLogin()">
+                    Войти
+                </button>
+            </div>
+
+            <!-- Register Form -->
+            <div id="register-form" class="form-section">
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="reg-email" placeholder="you@example.com" autocomplete="email">
+                </div>
+                <div class="form-group">
+                    <label>Пароль</label>
+                    <input type="password" id="reg-password" placeholder="Минимум 6 символов" autocomplete="new-password">
+                </div>
+                <div class="form-group">
+                    <label>Подтвердите пароль</label>
+                    <input type="password" id="reg-password2" placeholder="Повторите пароль" autocomplete="new-password">
+                </div>
+                <button class="btn-primary" id="reg-btn" onclick="handleRegister()">
+                    Создать аккаунт
+                </button>
+            </div>
+        </div>
+
+        <div class="footer">
+            ReelsTracker &copy; 2025
+        </div>
+    </div>
+
+    <script>
+        const API = window.location.origin + '/api';
+
+        // Проверяем, есть ли уже токен
+        (function checkAuth() {
+            const token = localStorage.getItem('access_token');
+            if (token) {
+                // Проверяем валидность
+                fetch(API + '/auth/me', {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                }).then(r => {
+                    if (r.ok) window.location.href = '/tracker.html';
+                }).catch(() => {});
+            }
+        })();
+
+        function switchTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.form-section').forEach(f => f.classList.remove('active'));
+
+            if (tab === 'login') {
+                document.querySelectorAll('.tab')[0].classList.add('active');
+                document.getElementById('login-form').classList.add('active');
+            } else {
+                document.querySelectorAll('.tab')[1].classList.add('active');
+                document.getElementById('register-form').classList.add('active');
+            }
+
+            hideMessages();
+        }
+
+        function showError(msg) {
+            const el = document.getElementById('error');
+            el.textContent = msg;
+            el.style.display = 'block';
+            document.getElementById('success').style.display = 'none';
+        }
+
+        function showSuccess(msg) {
+            const el = document.getElementById('success');
+            el.textContent = msg;
+            el.style.display = 'block';
+            document.getElementById('error').style.display = 'none';
+        }
+
+        function hideMessages() {
+            document.getElementById('error').style.display = 'none';
+            document.getElementById('success').style.display = 'none';
+        }
+
+        function setLoading(btnId, loading) {
+            const btn = document.getElementById(btnId);
+            if (loading) {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner"></span>Подождите...';
+            } else {
+                btn.disabled = false;
+                btn.textContent = btnId === 'login-btn' ? 'Войти' : 'Создать аккаунт';
+            }
+        }
+
+        function saveAuth(data) {
+            localStorage.setItem('access_token', data.access_token);
+            localStorage.setItem('refresh_token', data.refresh_token);
+            localStorage.setItem('user', JSON.stringify(data.user));
+        }
+
+        async function handleLogin() {
+            hideMessages();
+            const email = document.getElementById('login-email').value.trim();
+            const password = document.getElementById('login-password').value;
+
+            if (!email || !password) {
+                showError('Заполните все поля');
+                return;
+            }
+
+            setLoading('login-btn', true);
+
+            try {
+                const res = await fetch(API + '/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await res.json();
+
+                if (res.ok) {
+                    saveAuth(data);
+                    window.location.href = '/tracker.html';
+                } else {
+                    showError(data.detail || 'Ошибка входа');
+                }
+            } catch (e) {
+                showError('Ошибка сети. Попробуйте позже.');
+            } finally {
+                setLoading('login-btn', false);
+            }
+        }
+
+        async function handleRegister() {
+            hideMessages();
+            const email = document.getElementById('reg-email').value.trim();
+            const password = document.getElementById('reg-password').value;
+            const password2 = document.getElementById('reg-password2').value;
+
+            if (!email || !password || !password2) {
+                showError('Заполните все поля');
+                return;
+            }
+
+            if (password.length < 6) {
+                showError('Пароль должен быть минимум 6 символов');
+                return;
+            }
+
+            if (password !== password2) {
+                showError('Пароли не совпадают');
+                return;
+            }
+
+            setLoading('reg-btn', true);
+
+            try {
+                const res = await fetch(API + '/auth/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await res.json();
+
+                if (res.ok) {
+                    saveAuth(data);
+                    window.location.href = '/tracker.html';
+                } else {
+                    showError(data.detail || 'Ошибка регистрации');
+                }
+            } catch (e) {
+                showError('Ошибка сети. Попробуйте позже.');
+            } finally {
+                setLoading('reg-btn', false);
+            }
+        }
+
+        // Enter key submits
+        document.getElementById('login-password').addEventListener('keydown', e => {
+            if (e.key === 'Enter') handleLogin();
+        });
+        document.getElementById('reg-password2').addEventListener('keydown', e => {
+            if (e.key === 'Enter') handleRegister();
+        });
+    </script>
+</body>
+</html>

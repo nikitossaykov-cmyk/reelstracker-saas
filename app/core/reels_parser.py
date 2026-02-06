@@ -214,6 +214,34 @@ class ReelsParser:
                 'timestamp': datetime.now().isoformat()
             }
 
+            # Метод 0: GraphQL API (работает без авторизации)
+            try:
+                graphql_url = f"https://www.instagram.com/api/v1/media/{media_id}/info/"
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': '*/*',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'X-IG-App-ID': '936619743392459',
+                    'X-Requested-With': 'XMLHttpRequest',
+                }
+                proxies = {'http': self.proxy, 'https': self.proxy} if self.proxy else None
+                response = requests.get(graphql_url, headers=headers, proxies=proxies, timeout=15)
+
+                if response.status_code == 200:
+                    data = response.json()
+                    items = data.get('items', [])
+                    if items:
+                        item = items[0]
+                        metrics['views'] = item.get('play_count', 0) or item.get('view_count', 0) or 0
+                        metrics['likes'] = item.get('like_count', 0)
+                        metrics['comments'] = item.get('comment_count', 0)
+                        metrics['shares'] = item.get('reshare_count', 0) or item.get('share_count', 0) or 0
+                        logger.info(f"GraphQL метрики: views={metrics['views']}, likes={metrics['likes']}, shares={metrics['shares']}")
+                        if metrics['views'] > 0 or metrics['likes'] > 0:
+                            return metrics
+            except Exception as e:
+                logger.debug(f"GraphQL метод не сработал: {e}")
+
             # Метод 1: API с куками
             account = self.get_next_account()
             if account:
@@ -256,6 +284,21 @@ class ReelsParser:
                                 return metrics
                 except Exception as e:
                     logger.warning(f"API метод не сработал: {e}")
+
+            # Метод 1.5: oEmbed API (публичный, возвращает базовые данные)
+            try:
+                oembed_url = f"https://www.instagram.com/api/v1/oembed/?url=https://www.instagram.com/reel/{shortcode}/"
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    'Accept': 'application/json',
+                }
+                proxies = {'http': self.proxy, 'https': self.proxy} if self.proxy else None
+                response = requests.get(oembed_url, headers=headers, proxies=proxies, timeout=10)
+                if response.status_code == 200:
+                    # oEmbed не даёт метрик, но подтверждает что рилс существует
+                    logger.debug("oEmbed: рилс доступен")
+            except Exception as e:
+                logger.debug(f"oEmbed не сработал: {e}")
 
             # Метод 2: Selenium fallback
             if not self.driver:

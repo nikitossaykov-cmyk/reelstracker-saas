@@ -30,15 +30,20 @@ RUN apt-get update && apt-get install -y \
     && apt-get install -y google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
 
-# ChromeDriver — use Chrome for Testing endpoint
-RUN CHROME_MAJOR=$(google-chrome --version | grep -oP '\d+' | head -1) \
-    && CHROMEDRIVER_URL=$(curl -s "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json" \
-       | python3 -c "import sys,json; d=json.load(sys.stdin); print([a['url'] for a in d['channels']['Stable']['downloads']['chromedriver'] if a['platform']=='linux64'][0])") \
+# ChromeDriver — match exact Chrome version
+RUN CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+\.\d+') \
+    && echo "Chrome version: $CHROME_VERSION" \
+    && CHROME_MAJOR=$(echo $CHROME_VERSION | cut -d. -f1) \
+    && echo "Chrome major: $CHROME_MAJOR" \
+    && CHROMEDRIVER_URL=$(curl -s "https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json" \
+       | python3 -c "import sys,json; d=json.load(sys.stdin); v='$CHROME_VERSION'; matches=[ver for ver in d['versions'] if ver['version'].startswith('$CHROME_MAJOR.')]; ver=next((m for m in matches if m['version']==v), matches[-1] if matches else None); print([dl['url'] for dl in ver['downloads'].get('chromedriver',[]) if dl['platform']=='linux64'][0]) if ver else exit(1)") \
+    && echo "ChromeDriver URL: $CHROMEDRIVER_URL" \
     && wget -q "$CHROMEDRIVER_URL" -O /tmp/chromedriver.zip \
     && unzip /tmp/chromedriver.zip -d /tmp/ \
     && mv /tmp/chromedriver-linux64/chromedriver /usr/local/bin/ \
     && chmod +x /usr/local/bin/chromedriver \
-    && rm -rf /tmp/chromedriver*
+    && rm -rf /tmp/chromedriver* \
+    && echo "Installed ChromeDriver for Chrome $CHROME_VERSION"
 
 WORKDIR /app
 

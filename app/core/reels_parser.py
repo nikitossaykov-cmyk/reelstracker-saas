@@ -280,10 +280,13 @@ class ReelsParser:
             time.sleep(5)
 
             page_source = self.driver.page_source
+
+            # Паттерны для поиска в JSON внутри page_source
             patterns = {
-                'views': [r'"video_view_count":(\d+)', r'"play_count":(\d+)', r'"view_count":(\d+)'],
+                'views': [r'"video_view_count":(\d+)', r'"play_count":(\d+)', r'"view_count":(\d+)', r'"ig_play_count":(\d+)'],
                 'likes': [r'"like_count":(\d+)', r'"edge_media_preview_like":\{"count":(\d+)'],
                 'comments': [r'"comment_count":(\d+)', r'"edge_media_to_comment":\{"count":(\d+)'],
+                'shares': [r'"reshare_count":(\d+)', r'"share_count":(\d+)'],
             }
 
             for metric_name, metric_patterns in patterns.items():
@@ -293,10 +296,87 @@ class ReelsParser:
                     match = re.search(pattern, page_source)
                     if match:
                         metrics[metric_name] = int(match.group(1))
+                        logger.info(f"Найдено {metric_name}={metrics[metric_name]} через паттерн {pattern}")
                         break
 
+            # Метод 3: Поиск в DOM элементах (Instagram показывает views/plays визуально)
+            if metrics['views'] == 0:
+                try:
+                    # Instagram показывает просмотры рядом с видео
+                    view_selectors = [
+                        'span[class*="views"]',
+                        'span[class*="play"]',
+                        'div[class*="views"] span',
+                        'section span',  # Часто views в секции под видео
+                    ]
+                    for selector in view_selectors:
+                        try:
+                            elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                            for el in elements:
+                                text = el.text.strip()
+                                # Ищем текст типа "1.2M views" или "1,234 plays"
+                                if text and any(kw in text.lower() for kw in ['view', 'play', 'просмотр']):
+                                    num = self._parse_metric_text(text.split()[0])
+                                    if num > 0:
+                                        metrics['views'] = num
+                                        logger.info(f"Найдено views={num} через DOM selector {selector}")
+                                        break
+                        except:
+                            continue
+                        if metrics['views'] > 0:
+                            break
+                except Exception as e:
+                    logger.debug(f"DOM поиск views не сработал: {e}")
+
+            # Поиск лайков в DOM если не нашли в JSON
+            if metrics['likes'] == 0:
+                try:
+                    like_selectors = [
+                        'section span[class*="like"]',
+                        'button[aria-label*="like"] span',
+                        'span[class*="like"]',
+                    ]
+                    for selector in like_selectors:
+                        try:
+                            elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                            for el in elements:
+                                text = el.text.strip()
+                                if text and re.match(r'^[\d,.KMB]+$', text, re.IGNORECASE):
+                                    num = self._parse_metric_text(text)
+                                    if num > 0:
+                                        metrics['likes'] = num
+                                        logger.info(f"Найдено likes={num} через DOM")
+                                        break
+                        except:
+                            continue
+                        if metrics['likes'] > 0:
+                            break
+                except Exception as e:
+                    logger.debug(f"DOM поиск likes не сработал: {e}")
+
+            # Ищем в __additionalDataLoaded или другие скрипты с данными
+            if metrics['views'] == 0:
+                try:
+                    script_patterns = [
+                        r'video_view_count["\s:]+(\d+)',
+                        r'playCount["\s:]+(\d+)',
+                        r'"viewCount"["\s:]+(\d+)',
+                        r'views["\s:]+(\d+)',
+                    ]
+                    for pattern in script_patterns:
+                        matches = re.findall(pattern, page_source, re.IGNORECASE)
+                        if matches:
+                            # Берём максимальное значение (реальные просмотры обычно больше)
+                            max_views = max(int(m) for m in matches)
+                            if max_views > metrics['views']:
+                                metrics['views'] = max_views
+                                logger.info(f"Найдено views={max_views} через расширенный regex")
+                                break
+                except Exception as e:
+                    logger.debug(f"Расширенный поиск views не сработал: {e}")
+
             if metrics['views'] > 0 or metrics['likes'] > 0:
-                logger.info(f"Instagram метрики: views={metrics['views']}, likes={metrics['likes']}")
+                logger.info(f"Instagram метрики: views={metrics['views']}, likes={metrics['likes']}, comments={metrics['comments']}, shares={metrics['shares']}")
                 return metrics
             else:
                 logger.warning("Instagram: не удалось получить метрики")

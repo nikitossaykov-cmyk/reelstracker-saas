@@ -104,11 +104,19 @@ async def health():
 @app.get("/debug/config")
 async def debug_config():
     """Временный debug endpoint - УДАЛИТЬ после отладки!"""
-    from app.services.auth_service import settings as auth_settings
+    from app.services.auth_service import settings as auth_settings, decode_token, create_access_token
+
+    # Create a test token
+    test_token = create_access_token(data={"sub": 999})
+
+    # Try to decode it
+    decoded = decode_token(test_token)
+
     return {
         "main_secret_key_preview": settings.SECRET_KEY[:20] + "...",
         "auth_secret_key_preview": auth_settings.SECRET_KEY[:20] + "...",
         "keys_match": settings.SECRET_KEY == auth_settings.SECRET_KEY,
-        "main_secret_key_len": len(settings.SECRET_KEY),
-        "auth_secret_key_len": len(auth_settings.SECRET_KEY),
+        "test_token_created": test_token[:50] + "...",
+        "test_token_decoded": decoded,
+        "self_verify_works": decoded is not None and decoded.get("sub") == 999,
     }

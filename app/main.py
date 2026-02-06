@@ -99,3 +99,14 @@ async def tracker_page():
 @app.get("/health")
 async def health():
     return {"status": "ok", "version": "1.0.0"}
+
+
+@app.get("/debug/config")
+async def debug_config():
+    """Временный debug endpoint - УДАЛИТЬ после отладки!"""
+    return {
+        "secret_key_preview": settings.SECRET_KEY[:20] + "..." if len(settings.SECRET_KEY) > 20 else settings.SECRET_KEY,
+        "secret_key_len": len(settings.SECRET_KEY),
+        "algorithm": settings.ALGORITHM,
+        "database_url_preview": settings.DATABASE_URL[:30] + "..." if settings.DATABASE_URL else None,
+    }

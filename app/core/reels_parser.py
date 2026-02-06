@@ -179,11 +179,23 @@ class ReelsParser:
                 logger.info("Selenium: прокси расширение загружено")
 
         try:
-            self.driver = webdriver.Chrome(options=chrome_options)
+            from selenium.webdriver.chrome.service import Service
+            import shutil
+
+            # Ищем chromedriver в PATH или стандартных местах
+            chromedriver_path = shutil.which('chromedriver') or '/usr/local/bin/chromedriver'
+            chrome_binary = shutil.which('google-chrome') or shutil.which('google-chrome-stable') or '/usr/bin/google-chrome'
+
+            chrome_options.binary_location = chrome_binary
+            service = Service(executable_path=chromedriver_path)
+
+            self.driver = webdriver.Chrome(service=service, options=chrome_options)
             self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-            logger.info("Selenium успешно инициализирован")
+            logger.info(f"Selenium успешно инициализирован (chrome: {chrome_binary}, driver: {chromedriver_path})")
         except Exception as e:
             logger.error(f"Ошибка инициализации Selenium: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             self.driver = None
 
     def parse_instagram(self, url):

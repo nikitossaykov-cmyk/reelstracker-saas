@@ -23,8 +23,8 @@ router = APIRouter()
 
 def _make_tokens(user: User) -> Token:
     """Сгенерировать пару токенов для юзера"""
-    access = create_access_token(data={"sub": user.id})
-    refresh = create_refresh_token(data={"sub": user.id})
+    access = create_access_token(data={"sub": str(user.id)})
+    refresh = create_refresh_token(data={"sub": str(user.id)})
     reels_count = len(user.reels) if user.reels else 0
     return Token(
         access_token=access,
@@ -80,7 +80,7 @@ def refresh_token(data: TokenRefresh, db: Session = Depends(get_db)):
             detail="Невалидный refresh token",
         )
 
-    user_id = payload.get("sub")
+    user_id = int(payload.get("sub"))
     user = db.query(User).filter(User.id == user_id).first()
     if not user or not user.is_active:
         raise HTTPException(

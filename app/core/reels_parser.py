@@ -214,33 +214,74 @@ class ReelsParser:
                 'timestamp': datetime.now().isoformat()
             }
 
-            # Метод 0: GraphQL API (работает без авторизации)
+            # Метод 0: GraphQL API через web endpoint
             try:
-                graphql_url = f"https://www.instagram.com/api/v1/media/{media_id}/info/"
+                # Пробуем получить данные через graphql query
+                graphql_url = f"https://www.instagram.com/graphql/query/"
+                variables = {"shortcode": shortcode}
+                params = {
+                    "query_hash": "b3055c01b4b222b8a47dc12b090e4e64",  # media query hash
+                    "variables": json.dumps(variables)
+                }
                 headers = {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                     'Accept': '*/*',
                     'Accept-Language': 'en-US,en;q=0.9',
                     'X-IG-App-ID': '936619743392459',
                     'X-Requested-With': 'XMLHttpRequest',
+                    'Referer': f'https://www.instagram.com/reel/{shortcode}/',
                 }
                 proxies = {'http': self.proxy, 'https': self.proxy} if self.proxy else None
-                response = requests.get(graphql_url, headers=headers, proxies=proxies, timeout=15)
+                response = requests.get(graphql_url, params=params, headers=headers, proxies=proxies, timeout=15)
+
+                if response.status_code == 200:
+                    data = response.json()
+                    media = data.get('data', {}).get('shortcode_media', {})
+                    if media:
+                        metrics['views'] = media.get('video_view_count', 0) or media.get('play_count', 0) or 0
+                        metrics['likes'] = media.get('edge_media_preview_like', {}).get('count', 0)
+                        metrics['comments'] = media.get('edge_media_to_comment', {}).get('count', 0) or media.get('edge_media_to_parent_comment', {}).get('count', 0)
+                        logger.info(f"GraphQL web метрики: views={metrics['views']}, likes={metrics['likes']}")
+                        if metrics['views'] > 0 or metrics['likes'] > 0:
+                            return metrics
+                else:
+                    logger.debug(f"GraphQL web вернул {response.status_code}")
+            except Exception as e:
+                logger.debug(f"GraphQL web метод не сработал: {e}")
+
+            # Метод 0.5: Mobile API
+            try:
+                api_url = f"https://i.instagram.com/api/v1/media/{media_id}/info/"
+                headers = {
+                    'User-Agent': 'Instagram 275.0.0.27.98 Android (33/13; 420dpi; 1080x2400; samsung; SM-G991B; o1s; exynos2100)',
+                    'Accept': '*/*',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'X-IG-App-ID': '567067343352427',  # Android App ID
+                    'X-IG-Device-ID': 'android-1234567890abcdef',
+                    'X-IG-Connection-Type': 'WIFI',
+                    'X-IG-Capabilities': '3brTvw8=',
+                }
+                proxies = {'http': self.proxy, 'https': self.proxy} if self.proxy else None
+                response = requests.get(api_url, headers=headers, proxies=proxies, timeout=15)
 
                 if response.status_code == 200:
                     data = response.json()
                     items = data.get('items', [])
                     if items:
                         item = items[0]
-                        metrics['views'] = item.get('play_count', 0) or item.get('view_count', 0) or 0
-                        metrics['likes'] = item.get('like_count', 0)
-                        metrics['comments'] = item.get('comment_count', 0)
+                        views = item.get('play_count', 0) or item.get('view_count', 0) or item.get('video_view_count', 0) or 0
+                        if views > 0:
+                            metrics['views'] = views
+                        metrics['likes'] = item.get('like_count', 0) or metrics['likes']
+                        metrics['comments'] = item.get('comment_count', 0) or metrics['comments']
                         metrics['shares'] = item.get('reshare_count', 0) or item.get('share_count', 0) or 0
-                        logger.info(f"GraphQL метрики: views={metrics['views']}, likes={metrics['likes']}, shares={metrics['shares']}")
-                        if metrics['views'] > 0 or metrics['likes'] > 0:
+                        logger.info(f"Mobile API метрики: views={metrics['views']}, likes={metrics['likes']}, shares={metrics['shares']}")
+                        if metrics['views'] > 0:
                             return metrics
+                else:
+                    logger.debug(f"Mobile API вернул {response.status_code}")
             except Exception as e:
-                logger.debug(f"GraphQL метод не сработал: {e}")
+                logger.debug(f"Mobile API метод не сработал: {e}")
 
             # Метод 1: API с куками
             account = self.get_next_account()

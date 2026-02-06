@@ -82,8 +82,8 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/")
 async def root():
-    """Редирект на логин"""
-    return FileResponse("static/login.html")
+    """Главная страница — трекер"""
+    return FileResponse("static/tracker.html")
 
 
 @app.get("/login.html")

@@ -31,7 +31,7 @@ class Settings(BaseSettings):
 
     # Tariff limits
     FREE_MAX_REELS: int = 3
-    FREE_PARSE_INTERVAL_MINUTES: int = 60
+    FREE_PARSE_INTERVAL_MINUTES: int = 5  # Было 60, уменьшено для тестирования
     PRO_PARSE_INTERVAL_MINUTES: int = 5
 
     model_config = {

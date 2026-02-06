@@ -27,7 +27,15 @@ def get_parser() -> ReelsParser:
     global _parser_instance
     if _parser_instance is None:
         proxy = settings.PROXY_LIST if settings.PROXY_ENABLED else None
-        accounts_file = None  # TODO: сделать загрузку аккаунтов из настроек юзера
+        # Загружаем аккаунты Instagram из файла
+        import os
+        accounts_file = os.environ.get('INSTAGRAM_ACCOUNTS_FILE', 'accstg.txt')
+        # Проверяем существует ли файл
+        if not os.path.exists(accounts_file):
+            accounts_file = None
+            logger.warning("Файл аккаунтов Instagram не найден, парсинг без авторизации")
+        else:
+            logger.info(f"Используем файл аккаунтов: {accounts_file}")
         _parser_instance = ReelsParser(proxy=proxy, accounts_file=accounts_file)
     return _parser_instance
 

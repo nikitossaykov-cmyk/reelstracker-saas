@@ -104,13 +104,21 @@ async def health():
 @app.get("/debug/config")
 async def debug_config():
     """Временный debug endpoint - УДАЛИТЬ после отладки!"""
-    from app.services.auth_service import settings as auth_settings, decode_token, create_access_token
+    from app.services.auth_service import settings as auth_settings
+    from jose import jwt, JWTError
 
     # Create a test token
-    test_token = create_access_token(data={"sub": 999})
+    test_token = jwt.encode({"sub": 999, "type": "test"}, auth_settings.SECRET_KEY, algorithm="HS256")
 
-    # Try to decode it
-    decoded = decode_token(test_token)
+    # Try to decode it directly
+    decode_error = None
+    decoded = None
+    try:
+        decoded = jwt.decode(test_token, auth_settings.SECRET_KEY, algorithms=["HS256"])
+    except JWTError as e:
+        decode_error = f"{type(e).__name__}: {e}"
+    except Exception as e:
+        decode_error = f"Other error: {type(e).__name__}: {e}"
 
     return {
         "main_secret_key_preview": settings.SECRET_KEY[:20] + "...",
@@ -118,5 +126,6 @@ async def debug_config():
         "keys_match": settings.SECRET_KEY == auth_settings.SECRET_KEY,
         "test_token_created": test_token[:50] + "...",
         "test_token_decoded": decoded,
+        "decode_error": decode_error,
         "self_verify_works": decoded is not None and decoded.get("sub") == 999,
     }

@@ -48,7 +48,9 @@ def decode_token(token: str) -> Optional[dict]:
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         return payload
-    except JWTError:
+    except JWTError as e:
+        import logging
+        logging.error(f"JWT decode error: {type(e).__name__}: {e}")
         return None
 
 

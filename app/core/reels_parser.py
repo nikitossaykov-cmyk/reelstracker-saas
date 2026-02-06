@@ -35,9 +35,36 @@ class ReelsParser:
         self.driver = None
         self.accounts = []
         self.current_account_idx = 0
+
+        # Загрузка аккаунта из переменной окружения
+        self._load_account_from_env()
+
         if accounts_file:
             self.load_accounts(accounts_file)
         self.setup_selenium()
+
+    def _load_account_from_env(self):
+        """Загрузка Instagram аккаунта из переменной окружения INSTAGRAM_COOKIES"""
+        import os
+        cookies_str = os.environ.get('INSTAGRAM_COOKIES', '')
+        if not cookies_str:
+            return
+
+        try:
+            cookies = {}
+            for cookie in cookies_str.split(';'):
+                if '=' in cookie:
+                    key, value = cookie.split('=', 1)
+                    cookies[key.strip()] = value.strip()
+
+            if 'sessionid' in cookies:
+                self.accounts.append({
+                    'login': 'env_account',
+                    'cookies': cookies
+                })
+                logger.info("Загружен Instagram аккаунт из INSTAGRAM_COOKIES")
+        except Exception as e:
+            logger.warning(f"Ошибка загрузки куки из ENV: {e}")
 
     def load_accounts(self, accounts_file):
         """Загрузка аккаунтов Instagram с куки"""

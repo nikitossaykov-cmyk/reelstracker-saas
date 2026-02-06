@@ -31,8 +31,8 @@ class Settings(BaseSettings):
 
     # Tariff limits
     FREE_MAX_REELS: int = 3
-    FREE_PARSE_INTERVAL_MINUTES: int = 5  # Было 60, уменьшено для тестирования
-    PRO_PARSE_INTERVAL_MINUTES: int = 5
+    FREE_PARSE_INTERVAL_MINUTES: float = 0.33  # ~20 секунд для тестирования
+    PRO_PARSE_INTERVAL_MINUTES: float = 0.33
 
     model_config = {
         "env_file": ".env",

@@ -104,9 +104,11 @@ async def health():
 @app.get("/debug/config")
 async def debug_config():
     """Временный debug endpoint - УДАЛИТЬ после отладки!"""
+    from app.services.auth_service import settings as auth_settings
     return {
-        "secret_key_preview": settings.SECRET_KEY[:20] + "..." if len(settings.SECRET_KEY) > 20 else settings.SECRET_KEY,
-        "secret_key_len": len(settings.SECRET_KEY),
-        "algorithm": settings.ALGORITHM,
-        "database_url_preview": settings.DATABASE_URL[:30] + "..." if settings.DATABASE_URL else None,
+        "main_secret_key_preview": settings.SECRET_KEY[:20] + "...",
+        "auth_secret_key_preview": auth_settings.SECRET_KEY[:20] + "...",
+        "keys_match": settings.SECRET_KEY == auth_settings.SECRET_KEY,
+        "main_secret_key_len": len(settings.SECRET_KEY),
+        "auth_secret_key_len": len(auth_settings.SECRET_KEY),
     }

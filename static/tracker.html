@@ -1018,13 +1018,17 @@
             if (metric === 'likes' || metric === 'all') datasets.push({ label: 'Лайки', data: history.map(h => h.likes), borderColor: colors.likes.b, backgroundColor: colors.likes.bg, fill: metric !== 'all', tension: 0.4, pointRadius: 3, borderWidth: 2 });
             if (metric === 'comments' || metric === 'all') datasets.push({ label: 'Комментарии', data: history.map(h => h.comments), borderColor: colors.comments.b, backgroundColor: colors.comments.bg, fill: metric !== 'all', tension: 0.4, pointRadius: 3, borderWidth: 2 });
 
-            // Вычисляем min/max для оси Y — НЕ с нуля, а от минимального значения с отступом 10%
+            // Вычисляем min/max для оси Y — НЕ с нуля, а от минимального значения
+            // Фильтруем только положительные значения для расчёта минимума
             const allValues = datasets.flatMap(d => d.data);
-            const minValue = Math.min(...allValues);
+            const positiveValues = allValues.filter(v => v > 0);
+            const minValue = positiveValues.length > 0 ? Math.min(...positiveValues) : 0;
             const maxValue = Math.max(...allValues);
             const range = maxValue - minValue || 1;
-            const yMin = Math.floor(minValue - range * 0.1);
-            const yMax = Math.ceil(maxValue + range * 0.05);
+            // Отступ 5% снизу, но не меньше minValue * 0.95
+            const yMin = Math.max(0, Math.floor(minValue * 0.95));
+            const yMax = Math.ceil(maxValue * 1.02);
+            console.log('Chart Y-axis:', { minValue, maxValue, range, yMin, yMax, metric, points: allValues.length });
 
             currentChart = new Chart(ctx, { type: 'line', data: { labels, datasets }, options: {
                 responsive: true, maintainAspectRatio: false, interaction: { intersect: false, mode: 'index' },

@@ -689,9 +689,11 @@
 
         function calcGrowth(history) {
             if (!history || history.length < 2) return { hasData: false };
-            const first = history[0];
-            const last = history[history.length - 1];
-            const prev = history[history.length - 2];
+            // Сортируем по дате
+            const sorted = [...history].sort((a, b) => new Date(a.date) - new Date(b.date));
+            const first = sorted[0];
+            const last = sorted[sorted.length - 1];
+            const prev = sorted[sorted.length - 2];
             const totalViews = last.views - first.views;
             const totalLikes = last.likes - first.likes;
             const lastDiff = last.views - prev.views;
@@ -919,9 +921,11 @@
         }
 
         function renderGrowthIndicators(reel) {
-            const history = reel.history || [];
+            const rawHistory = reel.history || [];
             const container = document.getElementById('growthIndicators');
-            if (history.length < 2) { container.innerHTML = '<div class="col-span-4 text-center text-zinc-500 py-4 text-sm">Недостаточно данных</div>'; return; }
+            if (rawHistory.length < 2) { container.innerHTML = '<div class="col-span-4 text-center text-zinc-500 py-4 text-sm">Недостаточно данных</div>'; return; }
+            // Сортируем по дате
+            const history = [...rawHistory].sort((a, b) => new Date(a.date) - new Date(b.date));
             const first = history[0], last = history[history.length - 1];
             const vg = last.views - first.views, lg = last.likes - first.likes, cg = last.comments - first.comments;
             const hours = (new Date(last.date) - new Date(first.date)) / (1000 * 60 * 60);
@@ -934,10 +938,14 @@
         }
 
         function renderChart(reel, metric) {
-            const history = reel.history || [];
+            const rawHistory = reel.history || [];
             if (currentChart) currentChart.destroy();
             const ctx = document.getElementById('reelChart').getContext('2d');
-            if (history.length === 0) { ctx.font = '14px Inter'; ctx.fillStyle = '#52525b'; ctx.textAlign = 'center'; ctx.fillText('Нет данных', ctx.canvas.width / 2, ctx.canvas.height / 2); return; }
+            if (rawHistory.length === 0) { ctx.font = '14px Inter'; ctx.fillStyle = '#52525b'; ctx.textAlign = 'center'; ctx.fillText('Нет данных', ctx.canvas.width / 2, ctx.canvas.height / 2); return; }
+
+            // Сортируем по дате (от старого к новому) для правильного отображения графика
+            const history = [...rawHistory].sort((a, b) => new Date(a.date) - new Date(b.date));
+
             const labels = history.map(h => { const d = new Date(h.date); return d.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }); });
             const datasets = [];
             const colors = { views: { b: '#818cf8', bg: 'rgba(129,140,248,0.1)' }, likes: { b: '#f472b6', bg: 'rgba(244,114,182,0.1)' }, comments: { b: '#34d399', bg: 'rgba(52,211,153,0.1)' } };
@@ -952,12 +960,15 @@
         }
 
         function renderHistoryTable(reel) {
-            const history = reel.history || [];
+            const rawHistory = reel.history || [];
             const tbody = document.getElementById('historyTable');
-            if (history.length === 0) { tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-zinc-600 text-sm">Нет данных</td></tr>'; return; }
-            const reversed = [...history].reverse();
+            if (rawHistory.length === 0) { tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-zinc-600 text-sm">Нет данных</td></tr>'; return; }
+            // Сортируем по дате (от нового к старому для таблицы)
+            const reversed = [...rawHistory].sort((a, b) => new Date(b.date) - new Date(a.date));
             tbody.innerHTML = reversed.map((h, i) => {
+                // prev = более ранняя запись (следующая в отсортированном по убыванию массиве)
                 const prev = reversed[i + 1];
+                // Прирост = текущие просмотры минус предыдущие (более ранние)
                 const growth = prev ? h.views - prev.views : 0;
                 const gc = growth > 0 ? 'trend-up' : (growth < 0 ? 'trend-down' : 'trend-neutral');
                 return `<tr class="border-t border-white/5 hover:bg-white/[0.02] transition-colors">

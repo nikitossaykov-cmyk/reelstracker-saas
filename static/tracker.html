@@ -1013,10 +1013,65 @@
 
             const labels = history.map(h => { const d = new Date(h.date); return d.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }); });
             const datasets = [];
-            const colors = { views: { b: '#818cf8', bg: 'rgba(129,140,248,0.1)' }, likes: { b: '#f472b6', bg: 'rgba(244,114,182,0.1)' }, comments: { b: '#34d399', bg: 'rgba(52,211,153,0.1)' } };
-            if (metric === 'views' || metric === 'all') datasets.push({ label: 'Просмотры', data: history.map(h => h.views), borderColor: colors.views.b, backgroundColor: colors.views.bg, fill: metric !== 'all', tension: 0.4, pointRadius: 3, borderWidth: 2 });
-            if (metric === 'likes' || metric === 'all') datasets.push({ label: 'Лайки', data: history.map(h => h.likes), borderColor: colors.likes.b, backgroundColor: colors.likes.bg, fill: metric !== 'all', tension: 0.4, pointRadius: 3, borderWidth: 2 });
-            if (metric === 'comments' || metric === 'all') datasets.push({ label: 'Комментарии', data: history.map(h => h.comments), borderColor: colors.comments.b, backgroundColor: colors.comments.bg, fill: metric !== 'all', tension: 0.4, pointRadius: 3, borderWidth: 2 });
+
+            // Создаём градиенты для заливки
+            const chartHeight = ctx.canvas.height;
+            const createGradient = (color) => {
+                const gradient = ctx.createLinearGradient(0, 0, 0, chartHeight);
+                gradient.addColorStop(0, color.replace(')', ', 0.3)').replace('rgb', 'rgba'));
+                gradient.addColorStop(1, color.replace(')', ', 0.02)').replace('rgb', 'rgba'));
+                return gradient;
+            };
+
+            const colors = {
+                views: { line: '#a78bfa', gradient: 'rgba(167, 139, 250, 0.15)' },
+                likes: { line: '#f472b6', gradient: 'rgba(244, 114, 182, 0.15)' },
+                comments: { line: '#34d399', gradient: 'rgba(52, 211, 153, 0.15)' }
+            };
+
+            // Тонкая линия, маленькие точки, плавная кривая, лёгкий градиент
+            if (metric === 'views' || metric === 'all') datasets.push({
+                label: 'Просмотры',
+                data: history.map(h => h.views),
+                borderColor: colors.views.line,
+                backgroundColor: colors.views.gradient,
+                fill: true,
+                tension: 0.35,
+                pointRadius: history.length > 50 ? 0 : 2,
+                pointHoverRadius: 5,
+                pointBackgroundColor: colors.views.line,
+                pointBorderColor: '#1a1a22',
+                pointBorderWidth: 2,
+                borderWidth: 2
+            });
+            if (metric === 'likes' || metric === 'all') datasets.push({
+                label: 'Лайки',
+                data: history.map(h => h.likes),
+                borderColor: colors.likes.line,
+                backgroundColor: colors.likes.gradient,
+                fill: true,
+                tension: 0.35,
+                pointRadius: history.length > 50 ? 0 : 2,
+                pointHoverRadius: 5,
+                pointBackgroundColor: colors.likes.line,
+                pointBorderColor: '#1a1a22',
+                pointBorderWidth: 2,
+                borderWidth: 2
+            });
+            if (metric === 'comments' || metric === 'all') datasets.push({
+                label: 'Комментарии',
+                data: history.map(h => h.comments),
+                borderColor: colors.comments.line,
+                backgroundColor: colors.comments.gradient,
+                fill: true,
+                tension: 0.35,
+                pointRadius: history.length > 50 ? 0 : 2,
+                pointHoverRadius: 5,
+                pointBackgroundColor: colors.comments.line,
+                pointBorderColor: '#1a1a22',
+                pointBorderWidth: 2,
+                borderWidth: 2
+            });
 
             // Вычисляем min/max для оси Y — график начинается от минимального значения, НЕ от нуля
             const allValues = datasets.flatMap(d => d.data);
@@ -1030,8 +1085,36 @@
             console.log('Chart Y-axis:', { minValue, maxValue, yMin, yMax, metric, dataPoints: allValues.slice(0, 5) });
 
             currentChart = new Chart(ctx, { type: 'line', data: { labels, datasets }, options: {
-                responsive: true, maintainAspectRatio: false, interaction: { intersect: false, mode: 'index' },
-                plugins: { legend: { display: metric === 'all', labels: { color: '#a1a1aa', font: { size: 11 } } }, tooltip: { backgroundColor: '#27272a', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1, titleColor: '#e4e4e7', bodyColor: '#a1a1aa', cornerRadius: 8, padding: 12 } },
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { intersect: false, mode: 'index' },
+                animation: { duration: 600, easing: 'easeOutQuart' },
+                plugins: {
+                    legend: {
+                        display: metric === 'all',
+                        labels: { color: '#a1a1aa', font: { size: 11, family: 'Inter' }, usePointStyle: true, pointStyle: 'circle', padding: 20 }
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(26, 26, 34, 0.95)',
+                        borderColor: 'rgba(255,255,255,0.1)',
+                        borderWidth: 1,
+                        titleColor: '#fff',
+                        titleFont: { size: 13, weight: '600', family: 'Inter' },
+                        bodyColor: '#a1a1aa',
+                        bodyFont: { size: 12, family: 'Inter' },
+                        cornerRadius: 10,
+                        padding: 14,
+                        displayColors: true,
+                        boxPadding: 6,
+                        callbacks: {
+                            label: (ctx) => {
+                                const val = ctx.parsed.y;
+                                const formatted = val >= 1e6 ? (val/1e6).toFixed(2)+'M' : val >= 1e3 ? (val/1e3).toFixed(1)+'K' : val.toLocaleString();
+                                return ` ${ctx.dataset.label}: ${formatted}`;
+                            }
+                        }
+                    }
+                },
                 scales: {
                     x: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#52525b', font: { size: 10 }, maxRotation: 45 } },
                     y: {

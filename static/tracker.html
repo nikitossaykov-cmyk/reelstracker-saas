@@ -929,11 +929,14 @@
                 const res = await authFetch(API + '/reels/' + id + '/history?limit=10000');
                 if (res && res.ok) {
                     const historyData = await res.json();
+                    console.log('History data from API:', historyData);
+                    console.log('First entry comments:', historyData[0]?.comments);
                     currentChartReel.history = historyData.map(h => ({
                         views: h.views, likes: h.likes, comments: h.comments, shares: h.shares, date: h.parsed_at
                     }));
+                    console.log('Mapped history:', currentChartReel.history.slice(0, 3));
                 }
-            } catch (e) {}
+            } catch (e) { console.error('History load error:', e); }
 
             // Сброс фильтров
             currentChartPeriod = 'all';

@@ -136,7 +136,7 @@ def process_one_job(db: Session) -> bool:
         # Завершаем задачу
         complete_job(db, job, views, likes, comments, shares)
 
-        logger.info(f"✅ Задача #{job.id} завершена: views={views}, likes={likes}")
+        logger.info(f"✅ Задача #{job.id} завершена: views={views}, likes={likes}, comments={comments}, shares={shares}")
 
         # Telegram уведомления (async в sync контексте)
         import asyncio

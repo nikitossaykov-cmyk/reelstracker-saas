@@ -277,12 +277,23 @@
                 </button>
             </div>
             <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6" id="growthIndicators"></div>
-            <div class="flex gap-2 mb-4">
-                <button class="chart-metric-btn active bg-violet-600 text-white px-4 py-2 rounded-lg text-xs font-semibold transition-all" data-metric="views">Просмотры</button>
-                <button class="chart-metric-btn bg-white/5 text-zinc-400 px-4 py-2 rounded-lg text-xs font-semibold transition-all hover:bg-white/10" data-metric="likes">Лайки</button>
-                <button class="chart-metric-btn bg-white/5 text-zinc-400 px-4 py-2 rounded-lg text-xs font-semibold transition-all hover:bg-white/10" data-metric="comments">Комменты</button>
-                <button class="chart-metric-btn bg-white/5 text-zinc-400 px-4 py-2 rounded-lg text-xs font-semibold transition-all hover:bg-white/10" data-metric="all">Все</button>
+            <!-- Фильтры по периоду -->
+            <div class="flex flex-wrap gap-2 mb-4">
+                <div class="flex gap-1 mr-4">
+                    <button class="chart-period-btn active bg-violet-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition-all" data-period="all">Всё</button>
+                    <button class="chart-period-btn bg-white/5 text-zinc-400 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all hover:bg-white/10" data-period="hour">Час</button>
+                    <button class="chart-period-btn bg-white/5 text-zinc-400 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all hover:bg-white/10" data-period="day">День</button>
+                    <button class="chart-period-btn bg-white/5 text-zinc-400 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all hover:bg-white/10" data-period="week">Неделя</button>
+                    <button class="chart-period-btn bg-white/5 text-zinc-400 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all hover:bg-white/10" data-period="month">Месяц</button>
+                </div>
+                <div class="flex gap-1">
+                    <button class="chart-metric-btn active bg-violet-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition-all" data-metric="views">Просмотры</button>
+                    <button class="chart-metric-btn bg-white/5 text-zinc-400 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all hover:bg-white/10" data-metric="likes">Лайки</button>
+                    <button class="chart-metric-btn bg-white/5 text-zinc-400 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all hover:bg-white/10" data-metric="comments">Комменты</button>
+                    <button class="chart-metric-btn bg-white/5 text-zinc-400 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all hover:bg-white/10" data-metric="all">Все</button>
+                </div>
             </div>
+            <div class="text-xs text-zinc-500 mb-2" id="chartPeriodInfo"></div>
             <div class="glass rounded-xl p-4" style="height: 350px;">
                 <canvas id="reelChart"></canvas>
             </div>
@@ -448,13 +459,28 @@
             if (currentChart) { currentChart.destroy(); currentChart = null; }
         });
 
+        let currentChartPeriod = 'all';
+        let currentChartMetric = 'views';
+
         document.querySelectorAll('.chart-metric-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 document.querySelectorAll('.chart-metric-btn').forEach(b => {
-                    b.className = 'chart-metric-btn bg-white/5 text-zinc-400 px-4 py-2 rounded-lg text-xs font-semibold transition-all hover:bg-white/10';
+                    b.className = 'chart-metric-btn bg-white/5 text-zinc-400 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all hover:bg-white/10';
                 });
-                e.target.className = 'chart-metric-btn active bg-violet-600 text-white px-4 py-2 rounded-lg text-xs font-semibold transition-all';
-                if (currentChartReel) renderChart(currentChartReel, e.target.dataset.metric);
+                e.target.className = 'chart-metric-btn active bg-violet-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition-all';
+                currentChartMetric = e.target.dataset.metric;
+                if (currentChartReel) renderChartWithPeriod(currentChartReel, currentChartMetric, currentChartPeriod);
+            });
+        });
+
+        document.querySelectorAll('.chart-period-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelectorAll('.chart-period-btn').forEach(b => {
+                    b.className = 'chart-period-btn bg-white/5 text-zinc-400 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all hover:bg-white/10';
+                });
+                e.target.className = 'chart-period-btn active bg-violet-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition-all';
+                currentChartPeriod = e.target.dataset.period;
+                if (currentChartReel) renderChartWithPeriod(currentChartReel, currentChartMetric, currentChartPeriod);
             });
         });
 
@@ -900,7 +926,7 @@
 
             // Load full history from API
             try {
-                const res = await authFetch(API + '/reels/' + id + '/history?limit=500');
+                const res = await authFetch(API + '/reels/' + id + '/history?limit=10000');
                 if (res && res.ok) {
                     const historyData = await res.json();
                     currentChartReel.history = historyData.map(h => ({
@@ -909,15 +935,51 @@
                 }
             } catch (e) {}
 
+            // Сброс фильтров
+            currentChartPeriod = 'all';
+            currentChartMetric = 'views';
+
             renderGrowthIndicators(currentChartReel);
-            renderChart(currentChartReel, 'views');
+            renderChartWithPeriod(currentChartReel, 'views', 'all');
             renderHistoryTable(currentChartReel);
 
+            // Сброс кнопок
             document.querySelectorAll('.chart-metric-btn').forEach(b => {
-                b.className = 'chart-metric-btn bg-white/5 text-zinc-400 px-4 py-2 rounded-lg text-xs font-semibold transition-all hover:bg-white/10';
+                b.className = 'chart-metric-btn bg-white/5 text-zinc-400 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all hover:bg-white/10';
             });
-            document.querySelector('.chart-metric-btn[data-metric="views"]').className = 'chart-metric-btn active bg-violet-600 text-white px-4 py-2 rounded-lg text-xs font-semibold transition-all';
+            document.querySelector('.chart-metric-btn[data-metric="views"]').className = 'chart-metric-btn active bg-violet-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition-all';
+            document.querySelectorAll('.chart-period-btn').forEach(b => {
+                b.className = 'chart-period-btn bg-white/5 text-zinc-400 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all hover:bg-white/10';
+            });
+            document.querySelector('.chart-period-btn[data-period="all"]').className = 'chart-period-btn active bg-violet-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition-all';
+
             modalChart.classList.remove('hidden');
+        }
+
+        function filterHistoryByPeriod(history, period) {
+            if (period === 'all') return history;
+            const now = new Date();
+            let cutoff;
+            switch (period) {
+                case 'hour': cutoff = new Date(now - 60 * 60 * 1000); break;
+                case 'day': cutoff = new Date(now - 24 * 60 * 60 * 1000); break;
+                case 'week': cutoff = new Date(now - 7 * 24 * 60 * 60 * 1000); break;
+                case 'month': cutoff = new Date(now - 30 * 24 * 60 * 60 * 1000); break;
+                default: return history;
+            }
+            return history.filter(h => new Date(h.date) >= cutoff);
+        }
+
+        function renderChartWithPeriod(reel, metric, period) {
+            const rawHistory = reel.history || [];
+            const filteredHistory = filterHistoryByPeriod(rawHistory, period);
+
+            // Показываем инфо о периоде
+            const infoEl = document.getElementById('chartPeriodInfo');
+            const periodNames = { all: 'Всё время', hour: 'Последний час', day: 'Последние 24 часа', week: 'Последняя неделя', month: 'Последний месяц' };
+            infoEl.textContent = `${periodNames[period]} • ${filteredHistory.length} точек из ${rawHistory.length}`;
+
+            renderChart({ ...reel, history: filteredHistory }, metric);
         }
 
         function renderGrowthIndicators(reel) {

@@ -20,6 +20,20 @@ settings = get_settings()
 
 # Глобальный экземпляр парсера (один на воркер)
 _parser_instance = None
+_parser_errors = 0
+
+
+def reset_parser():
+    """Сбросить парсер (при ошибках)"""
+    global _parser_instance, _parser_errors
+    if _parser_instance:
+        try:
+            _parser_instance.close()
+        except:
+            pass
+    _parser_instance = None
+    _parser_errors = 0
+    logger.info("Parser instance reset")
 
 
 def get_parser() -> ReelsParser:
@@ -164,16 +178,35 @@ def run_worker_loop(poll_interval: int = 5):
         poll_interval: интервал проверки очереди (секунды)
     """
     logger.info("🚀 Parser Worker запущен")
+    consecutive_errors = 0
 
     while True:
-        db = SessionLocal()
+        db = None
         try:
+            db = SessionLocal()
             processed = process_one_job(db)
+            consecutive_errors = 0  # Сброс счётчика ошибок при успехе
             if not processed:
                 # Очередь пуста — ждём
                 time.sleep(poll_interval)
         except Exception as e:
-            logger.error(f"Worker error: {e}")
-            time.sleep(poll_interval)
+            consecutive_errors += 1
+            logger.error(f"Worker error #{consecutive_errors}: {e}")
+
+            # При ошибках БД — ждём дольше
+            if "SSL" in str(e) or "connection" in str(e).lower() or "OperationalError" in str(e):
+                wait_time = min(30, poll_interval * consecutive_errors)
+                logger.warning(f"Database connection error, waiting {wait_time}s before retry...")
+                time.sleep(wait_time)
+            else:
+                time.sleep(poll_interval)
         finally:
-            db.close()
+            if db:
+                try:
+                    db.rollback()  # Откатываем транзакцию перед закрытием
+                except:
+                    pass
+                try:
+                    db.close()
+                except:
+                    pass

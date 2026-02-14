@@ -2,6 +2,7 @@
 Сервис очереди парсинга: создание задач, получение статуса
 """
 
+import logging
 from datetime import datetime, timedelta
 from typing import Optional
 from sqlalchemy.orm import Session
@@ -11,6 +12,8 @@ from app.models.user import User
 from app.models.reel import Reel
 from app.models.parsing import ParseJob, JobStatus
 from app.services.tariff_service import get_parse_interval, get_priority
+
+logger = logging.getLogger(__name__)
 
 
 def create_parse_job(db: Session, user: User, reel: Reel) -> ParseJob:
@@ -23,6 +26,7 @@ def create_parse_job(db: Session, user: User, reel: Reel) -> ParseJob:
     ).first()
 
     if existing:
+        logger.info(f"Задача для reel_id={reel.id} уже в очереди (job_id={existing.id}, status={existing.status})")
         return existing  # Уже в очереди
 
     job = ParseJob(
@@ -34,6 +38,7 @@ def create_parse_job(db: Session, user: User, reel: Reel) -> ParseJob:
     db.add(job)
     db.commit()
     db.refresh(job)
+    logger.info(f"✅ Создана задача #{job.id} для reel_id={reel.id}")
     return job
 
 
@@ -44,11 +49,14 @@ def create_parse_jobs_for_user(db: Session, user: User) -> list:
         Reel.enabled == True,
     ).all()
 
+    logger.info(f"Найдено {len(reels)} активных рилсов для user_id={user.id}")
+
     jobs = []
     for reel in reels:
         job = create_parse_job(db, user, reel)
         jobs.append(job)
 
+    logger.info(f"Создано {len(jobs)} задач для user_id={user.id}")
     return jobs
 
 

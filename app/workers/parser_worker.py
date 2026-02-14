@@ -180,10 +180,16 @@ def run_worker_loop(poll_interval: int = 5):
     logger.info("🚀 Parser Worker запущен")
     consecutive_errors = 0
 
+    check_count = 0
     while True:
         db = None
         try:
             db = SessionLocal()
+            check_count += 1
+            if check_count % 12 == 1:  # Логируем каждую минуту (12 * 5 сек)
+                from app.models.parsing import ParseJob, JobStatus
+                pending = db.query(ParseJob).filter(ParseJob.status == JobStatus.PENDING).count()
+                logger.info(f"📋 Проверка очереди #{check_count}: {pending} задач в ожидании")
             processed = process_one_job(db)
             consecutive_errors = 0  # Сброс счётчика ошибок при успехе
             if not processed:

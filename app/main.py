@@ -23,6 +23,35 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
+def reset_stuck_jobs():
+    """Сброс зависших задач (RUNNING без завершения)"""
+    from app.database import SessionLocal
+    from app.models.parsing import ParseJob, JobStatus
+    from datetime import datetime, timedelta
+
+    db = SessionLocal()
+    try:
+        # Задачи в статусе RUNNING более 10 минут — считаем зависшими
+        cutoff = datetime.utcnow() - timedelta(minutes=10)
+        stuck_jobs = db.query(ParseJob).filter(
+            ParseJob.status == JobStatus.RUNNING,
+            ParseJob.started_at < cutoff
+        ).all()
+
+        for job in stuck_jobs:
+            job.status = JobStatus.PENDING
+            job.started_at = None
+            logger.warning(f"🔄 Сброшена зависшая задача #{job.id}")
+
+        if stuck_jobs:
+            db.commit()
+            logger.info(f"✅ Сброшено {len(stuck_jobs)} зависших задач")
+    except Exception as e:
+        logger.error(f"Ошибка сброса задач: {e}")
+    finally:
+        db.close()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup / shutdown events"""
@@ -31,6 +60,9 @@ async def lifespan(app: FastAPI):
     # Создаём таблицы (в продакшене — alembic migrate)
     Base.metadata.create_all(bind=engine)
     logger.info("✅ Таблицы БД готовы")
+
+    # Сброс зависших задач от предыдущего запуска
+    reset_stuck_jobs()
 
     # Запуск фонового парсера и шедулера
     from app.workers.scheduler import start_scheduler_thread, start_worker_thread

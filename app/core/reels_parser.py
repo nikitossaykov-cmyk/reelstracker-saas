@@ -208,10 +208,32 @@ class ReelsParser:
         try:
             from selenium.webdriver.chrome.service import Service
             import shutil
+            import os
+            from pathlib import Path
 
-            # Ищем chromedriver в PATH или стандартных местах
-            chromedriver_path = shutil.which('chromedriver') or '/usr/local/bin/chromedriver'
-            chrome_binary = shutil.which('google-chrome') or shutil.which('google-chrome-stable') or '/usr/bin/google-chrome'
+            # 1) Явные пути из ENV (из app/config.py) имеют высший приоритет
+            env_chrome = os.environ.get('CHROME_BINARY_PATH', '').strip()
+            env_driver = os.environ.get('CHROMEDRIVER_PATH', '').strip()
+
+            # 2) Ищем Chrome: ENV → PATH → Mac .app → Linux стандарт
+            mac_chrome = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+            chrome_binary = (
+                env_chrome
+                or shutil.which('google-chrome')
+                or shutil.which('google-chrome-stable')
+                or (mac_chrome if Path(mac_chrome).exists() else None)
+                or '/usr/bin/google-chrome'
+            )
+
+            # 3) Ищем chromedriver: ENV → PATH → webdriver-manager (скачивает сам)
+            chromedriver_path = env_driver or shutil.which('chromedriver')
+            if not chromedriver_path:
+                try:
+                    from webdriver_manager.chrome import ChromeDriverManager
+                    chromedriver_path = ChromeDriverManager().install()
+                except Exception as wdm_err:
+                    logger.warning(f"webdriver-manager не сработал: {wdm_err}")
+                    chromedriver_path = '/usr/local/bin/chromedriver'
 
             chrome_options.binary_location = chrome_binary
             service = Service(executable_path=chromedriver_path)

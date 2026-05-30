@@ -196,6 +196,14 @@ def run_lightweight_migrations():
         "ALTER TABLE generated_videos ADD COLUMN IF NOT EXISTS uniq_media_url VARCHAR(1024)",
         "ALTER TABLE generated_videos ADD COLUMN IF NOT EXISTS uniq_storage_key VARCHAR(512)",
         "ALTER TABLE generated_videos ADD COLUMN IF NOT EXISTS uniqified_at TIMESTAMP",
+        # PR #10 — auto-remake pipeline
+        "ALTER TABLE instagram_accounts ADD COLUMN IF NOT EXISTS auto_remake_enabled BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE instagram_accounts ADD COLUMN IF NOT EXISTS auto_uniqify BOOLEAN NOT NULL DEFAULT TRUE",
+        "ALTER TABLE instagram_accounts ADD COLUMN IF NOT EXISTS auto_publish BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE instagram_accounts ADD COLUMN IF NOT EXISTS viral_growth_threshold DOUBLE PRECISION NOT NULL DEFAULT 2.0",
+        "ALTER TABLE instagram_accounts ADD COLUMN IF NOT EXISTS viral_window_hours INTEGER NOT NULL DEFAULT 12",
+        "ALTER TABLE instagram_accounts ADD COLUMN IF NOT EXISTS default_remake_params JSONB",
+        "ALTER TABLE instagram_accounts ADD COLUMN IF NOT EXISTS auto_posting_target_id INTEGER",
     ]
     # Enum-расширения нужно делать в AUTOCOMMIT (Postgres не разрешает
     # ALTER TYPE ... ADD VALUE внутри транзакции).

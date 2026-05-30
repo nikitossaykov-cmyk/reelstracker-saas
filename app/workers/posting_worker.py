@@ -47,16 +47,25 @@ def process_post_to_instagram_job(db: Session, job: ParseJob) -> bool:
         fail_job(db, job, msg); mark_post_failed(db, post, msg)
         return True
 
-    if target.platform != PostingPlatform.INSTAGRAM:
-        msg = f"PR #9 умеет только Instagram, target.platform={target.platform.value}"
+    # Map target.platform → publisher name
+    platform_to_pub = {
+        PostingPlatform.INSTAGRAM: "instagram",
+        PostingPlatform.TIKTOK: "tiktok",
+        PostingPlatform.VK_CLIPS: "vk_clips",
+        PostingPlatform.YOUTUBE_SHORTS: "youtube_shorts",
+    }
+    publisher_name = platform_to_pub.get(target.platform)
+    if not publisher_name:
+        msg = f"Unsupported platform {target.platform.value}"
         fail_job(db, job, msg); mark_post_failed(db, post, msg)
         return True
 
-    logger.info(f"📤 POST_TO_INSTAGRAM #{job.id} → post #{post.id} → target #{target.id}")
+    logger.info(f"📤 POST_TO_{target.platform.value.upper()} #{job.id} → "
+                f"post #{post.id} → target #{target.id}")
     mark_post_publishing(db, post)
 
     try:
-        publisher = get_publisher("instagram")
+        publisher = get_publisher(publisher_name)
         result = publisher.publish_video(
             media_url=media_url,
             caption=post.caption or "",

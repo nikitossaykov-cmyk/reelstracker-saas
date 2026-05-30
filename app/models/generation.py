@@ -58,6 +58,10 @@ class GeneratedVideo(Base):
     # Сколько списали с баланса юзера (в копейках, signed: -cost_kopecks).
     cost_kopecks = Column(BigInteger, nullable=True)
 
+    # Если это remake — указатели на источник.
+    source_reel_id = Column(Integer, ForeignKey("reels.id", ondelete="SET NULL"), nullable=True, index=True)
+    source_recipe_id = Column(Integer, ForeignKey("content_recipes.id", ondelete="SET NULL"), nullable=True, index=True)
+
     # Финальная медиа после загрузки в наше хранилище.
     media_url = Column(String(1024), nullable=True)       # публичный URL для IG Graph API
     media_storage_key = Column(String(512), nullable=True)  # ключ в R2/S3 для cleanup

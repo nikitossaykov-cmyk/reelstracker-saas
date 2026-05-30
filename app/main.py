@@ -185,6 +185,13 @@ def run_lightweight_migrations():
         "ALTER TABLE reels ADD COLUMN IF NOT EXISTS analysis_error TEXT",
         # PR #5 — content_recipes таблица создаётся через create_all,
         # тут ничего дополнительно делать не нужно (нет ALTER колонок).
+        # PR #6 — remake-pointers в generated_videos
+        "ALTER TABLE generated_videos ADD COLUMN IF NOT EXISTS source_reel_id INTEGER",
+        "ALTER TABLE generated_videos ADD COLUMN IF NOT EXISTS source_recipe_id INTEGER",
+        "CREATE INDEX IF NOT EXISTS ix_generated_videos_source_reel "
+        "ON generated_videos(source_reel_id)",
+        "CREATE INDEX IF NOT EXISTS ix_generated_videos_source_recipe "
+        "ON generated_videos(source_recipe_id)",
     ]
     # Enum-расширения нужно делать в AUTOCOMMIT (Postgres не разрешает
     # ALTER TYPE ... ADD VALUE внутри транзакции).
@@ -271,6 +278,7 @@ from app.api.accounts import router as accounts_router
 from app.api.settings_apify import router as apify_router
 from app.api.generation import router as generation_router
 from app.api.recipes import router as recipes_router
+from app.api.remakes import router as remakes_router
 
 app.include_router(auth_router, prefix="/api/auth", tags=["Auth"])
 app.include_router(reels_router, prefix="/api/reels", tags=["Reels"])
@@ -282,6 +290,7 @@ app.include_router(accounts_router, prefix="/api/accounts", tags=["Accounts"])
 app.include_router(apify_router, prefix="/api/settings/apify", tags=["Apify"])
 app.include_router(generation_router, prefix="/api/generation", tags=["Generation"])
 app.include_router(recipes_router, prefix="/api/recipes", tags=["Recipes"])
+app.include_router(remakes_router, prefix="/api/remakes", tags=["Remakes"])
 
 # ─── Static Files ──────────────────────────────────────────
 

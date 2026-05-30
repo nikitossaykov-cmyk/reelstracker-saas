@@ -46,6 +46,7 @@
     <button data-tab="posts" class="glass-tab px-4 py-3 text-sm rounded-t-lg">📤 Posts</button>
     <button data-tab="targets" class="glass-tab px-4 py-3 text-sm rounded-t-lg">🎯 Targets</button>
     <button data-tab="auto" class="glass-tab px-4 py-3 text-sm rounded-t-lg">⚡ Auto-Pipeline</button>
+    <button onclick="openVoiceClone()" class="glass-tab px-4 py-3 text-sm rounded-t-lg ml-auto" title="MSI XTTS voice clone">🎙 Voice clone</button>
   </nav>
 
   <!-- TAB: REELS -->
@@ -251,6 +252,64 @@
       <div class="flex justify-end gap-2 pt-3">
         <button type="button" onclick="closeModal('create-post-modal')" class="px-4 py-2 text-sm">Отмена</button>
         <button type="submit" class="btn-primary px-4 py-2 rounded text-sm font-medium">Создать</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- MODAL: Face Swap (MSI) -->
+<div id="face-swap-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+  <div class="glass max-w-md w-full rounded-lg p-6">
+    <h3 class="text-lg font-semibold mb-4">👤 Face swap через MSI ReActor</h3>
+    <p class="text-xs text-gray-400 mb-3">Подменит лицо в видео #<span id="fs-gv-id"></span> на присланное.
+      Бесплатно (MSI RTX 3070). Только когда приложение крутится с Tailscale-доступом к MSI.</p>
+    <form onsubmit="submitFaceSwap(event)" class="space-y-3">
+      <input type="hidden" id="fs-gv-input" />
+      <div>
+        <label class="block text-sm mb-1">Reference face (jpg/png)</label>
+        <input type="file" name="face_image" accept="image/*" required class="w-full bg-gray-900 px-3 py-2 rounded text-sm" />
+      </div>
+      <div class="flex justify-end gap-2">
+        <button type="button" onclick="closeModal('face-swap-modal')" class="px-4 py-2 text-sm">Отмена</button>
+        <button type="submit" class="btn-primary px-4 py-2 rounded text-sm font-medium">Запустить</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- MODAL: Voice Clone (MSI) -->
+<div id="voice-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+  <div class="glass max-w-xl w-full rounded-lg p-6">
+    <h3 class="text-lg font-semibold mb-4">🎙 Voice clone через MSI XTTS-v2</h3>
+    <p class="text-xs text-gray-400 mb-3">Клонирует голос из референса под произнесение твоего текста.
+      16 языков. Бесплатно (MSI RTX 3070).</p>
+    <form onsubmit="submitVoiceClone(event)" class="space-y-3">
+      <div>
+        <label class="block text-sm mb-1">Текст (что произнести)</label>
+        <textarea name="text" rows="4" required class="w-full bg-gray-900 px-3 py-2 rounded text-sm"
+                  placeholder="Это мимик, ищи на Вайлдберриз."></textarea>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-sm mb-1">Язык</label>
+          <select name="language" class="w-full bg-gray-900 px-2 py-2 rounded text-sm">
+            <option value="ru" selected>ru</option><option value="en">en</option>
+            <option value="es">es</option><option value="fr">fr</option><option value="de">de</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm mb-1">Reference voice (wav/mp3, 3+ сек)</label>
+          <input type="file" name="ref_voice" accept="audio/*" required class="w-full bg-gray-900 px-2 py-2 rounded text-sm" />
+        </div>
+      </div>
+      <div id="voice-result" class="hidden mt-3 p-3 bg-green-900/20 rounded">
+        <div class="text-sm text-green-400 mb-2">✅ Готово</div>
+        <audio id="voice-audio" controls class="w-full"></audio>
+        <a id="voice-link" class="text-xs text-blue-400 hover:underline" target="_blank">прямая ссылка R2</a>
+      </div>
+      <div class="flex justify-end gap-2">
+        <button type="button" onclick="closeModal('voice-modal')" class="px-4 py-2 text-sm">Закрыть</button>
+        <button type="submit" class="btn-primary px-4 py-2 rounded text-sm font-medium">🎙 Клонировать</button>
       </div>
     </form>
   </div>
@@ -482,10 +541,12 @@ async function loadGenerations() {
       <div class="text-xs text-gray-400 mb-2">${esc((g.prompt || '').slice(0, 200))}${g.prompt && g.prompt.length > 200 ? '...' : ''}</div>
       ${g.error_message ? `<div class="text-xs text-red-400 mb-2">⚠ ${esc(g.error_message)}</div>` : ''}
       ${g.media_url ? `
-        <div class="flex gap-2 items-center">
+        <div class="flex gap-2 items-center flex-wrap">
           <video src="${g.media_url}" controls class="w-32 rounded" preload="metadata"></video>
-          ${g.uniq_media_url ? `<div class="text-xs text-green-400">+uniq</div>` : `<button onclick="uniqify(${g.id})" class="text-xs px-2 py-1 glass rounded">🎲 uniqify</button>`}
-          <a href="${g.media_url}" target="_blank" class="text-xs text-blue-400 hover:underline">открыть</a>
+          ${g.uniq_media_url ? `<div class="text-xs text-green-400">+uniq</div>` : `<button onclick="uniqify(${g.id})" class="text-xs px-2 py-1 glass rounded" title="anti-fingerprint (ffmpeg)">🎲 uniqify</button>`}
+          <button onclick="openFaceSwap(${g.id})" class="text-xs px-2 py-1 glass rounded" title="MSI ReActor (free)">👤 face-swap (MSI)</button>
+          <a href="${g.media_url}" target="_blank" class="text-xs text-blue-400 hover:underline">оригинал</a>
+          ${g.uniq_media_url ? `<a href="${g.uniq_media_url}" target="_blank" class="text-xs text-green-400 hover:underline">uniq</a>` : ''}
         </div>` : ''}
     </div>
   `).join('');
@@ -494,6 +555,38 @@ async function uniqify(id) {
   const r = await apiFetch(`/api/generation/${id}/uniqify`, { method: 'POST' });
   alert(r.ok ? '✅ Uniq готов' : '❌ ' + (await r.text()));
   loadGenerations();
+}
+function openFaceSwap(gvId) {
+  document.getElementById('fs-gv-id').textContent = gvId;
+  document.getElementById('fs-gv-input').value = gvId;
+  openModal('face-swap-modal');
+}
+async function submitFaceSwap(ev) {
+  ev.preventDefault();
+  const gvId = document.getElementById('fs-gv-input').value;
+  const fd = new FormData(ev.target);
+  const r = await fetch(`/api/generation/${gvId}/face-swap`, {
+    method: 'POST', headers: authHeaders(), body: fd,
+  });
+  if (r.ok) { closeModal('face-swap-modal'); alert('✅ Face swap готов'); loadGenerations(); }
+  else alert('❌ ' + (await r.text()));
+}
+function openVoiceClone() {
+  document.getElementById('voice-result').classList.add('hidden');
+  openModal('voice-modal');
+}
+async function submitVoiceClone(ev) {
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  const r = await fetch('/api/voice/clone', {
+    method: 'POST', headers: authHeaders(), body: fd,
+  });
+  if (r.ok) {
+    const data = await r.json();
+    document.getElementById('voice-result').classList.remove('hidden');
+    document.getElementById('voice-audio').src = data.media_url;
+    document.getElementById('voice-link').href = data.media_url;
+  } else alert('❌ ' + (await r.text()));
 }
 async function submitCreateGen(ev) {
   ev.preventDefault();

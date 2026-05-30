@@ -332,6 +332,16 @@ async def tracker_page():
     return FileResponse("static/tracker.html")
 
 
+@app.get("/forge")
+async def forge_page_redirect():
+    return FileResponse("static/forge.html")
+
+
+@app.get("/forge.html")
+async def forge_page():
+    return FileResponse("static/forge.html")
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok", "version": "1.0.0"}

@@ -35,3 +35,12 @@ class AccountUpdate(BaseModel):
     """PATCH-like обновление флагов аккаунта."""
     sync_enabled: Optional[bool] = None
     auto_download_media: Optional[bool] = None
+    auto_analyze_media: Optional[bool] = None
+    # PR #10 — auto pipeline
+    auto_remake_enabled: Optional[bool] = None
+    auto_uniqify: Optional[bool] = None
+    auto_publish: Optional[bool] = None
+    viral_growth_threshold: Optional[float] = None
+    viral_window_hours: Optional[int] = None
+    default_remake_params: Optional[dict] = None
+    auto_posting_target_id: Optional[int] = None

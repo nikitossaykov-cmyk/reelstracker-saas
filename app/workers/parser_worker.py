@@ -319,7 +319,14 @@ def _process_sync_account_job(db: Session, job) -> bool:
                         # commit чтобы выдать reel.id для нового, и чтобы при
                         # ошибке download реальные изменения reel'а сохранились
                         db.commit()
-                        download_reel_media(db, target, item['video_url'])
+                        key = download_reel_media(db, target, item['video_url'])
+                        # PR #10 — chain hook: после download → analyze
+                        if key:
+                            try:
+                                from app.services.auto_pipeline_service import on_reel_downloaded
+                                on_reel_downloaded(db, target)
+                            except Exception as e:
+                                logger.warning(f"on_reel_downloaded hook failed: {e}")
             except Exception as e:
                 logger.warning(f"auto-download для reel {sc} упал: {e}")
 
@@ -456,6 +463,15 @@ def process_one_job(db: Session) -> bool:
         complete_job(db, job, views, likes, comments, shares)
 
         logger.info(f"✅ Задача #{job.id} завершена: views={views}, likes={likes}, comments={comments}, shares={shares}")
+
+        # PR #10 — viral detect hook
+        try:
+            from app.services.auto_pipeline_service import detect_and_trigger_viral
+            decision = detect_and_trigger_viral(db, reel)
+            if decision:
+                logger.info(f"  auto-pipeline: {decision}")
+        except Exception as e:
+            logger.warning(f"  auto-pipeline trigger failed: {e}")
 
         # Telegram уведомления (async в sync контексте)
         import asyncio

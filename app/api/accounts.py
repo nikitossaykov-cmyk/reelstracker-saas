@@ -176,6 +176,22 @@ def update_account(
         acc.sync_enabled = data.sync_enabled
     if data.auto_download_media is not None:
         acc.auto_download_media = data.auto_download_media
+    if data.auto_analyze_media is not None:
+        acc.auto_analyze_media = data.auto_analyze_media
+    if data.auto_remake_enabled is not None:
+        acc.auto_remake_enabled = data.auto_remake_enabled
+    if data.auto_uniqify is not None:
+        acc.auto_uniqify = data.auto_uniqify
+    if data.auto_publish is not None:
+        acc.auto_publish = data.auto_publish
+    if data.viral_growth_threshold is not None:
+        acc.viral_growth_threshold = data.viral_growth_threshold
+    if data.viral_window_hours is not None:
+        acc.viral_window_hours = data.viral_window_hours
+    if data.default_remake_params is not None:
+        acc.default_remake_params = data.default_remake_params
+    if data.auto_posting_target_id is not None:
+        acc.auto_posting_target_id = data.auto_posting_target_id
     db.commit()
     db.refresh(acc)
     count = db.query(Reel).filter(Reel.instagram_account_id == acc.id).count()

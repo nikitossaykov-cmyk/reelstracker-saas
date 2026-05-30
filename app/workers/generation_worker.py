@@ -178,4 +178,10 @@ def process_generate_video_job(db: Session, job: ParseJob) -> bool:
     )
     complete_job(db, job, 0, 0, 0, 0)
     logger.info(f"✅ Generation #{gv.id} READY → {public_url[:60]}...")
+    # PR #10 — chain hook: если это remake (source_reel_id) → uniqify + publish
+    try:
+        from app.services.auto_pipeline_service import on_generation_ready
+        on_generation_ready(db, gv)
+    except Exception as e:
+        logger.warning(f"on_generation_ready hook failed: {e}")
     return True

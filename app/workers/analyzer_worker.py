@@ -171,4 +171,10 @@ def process_analyze_reel_job(db: Session, job: ParseJob) -> bool:
         f"scenes={len(json.loads(scenes_json)) if scenes_json else 0}, "
         f"hook={hook_type}"
     )
+    # PR #10 — chain hook: после analyze → recipe + remake (if enabled)
+    try:
+        from app.services.auto_pipeline_service import on_reel_analyzed
+        on_reel_analyzed(db, reel)
+    except Exception as e:
+        logger.warning(f"on_reel_analyzed hook failed: {e}")
     return True

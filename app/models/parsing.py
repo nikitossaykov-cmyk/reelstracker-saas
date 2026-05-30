@@ -22,6 +22,8 @@ class JobType(str, enum.Enum):
     GENERATE_VIDEO = "generate_video"     # запросить генерацию у внешнего провайдера
     POST_TO_INSTAGRAM = "post_to_instagram"  # опубликовать через IG Graph API
     OAUTH_REFRESH = "oauth_refresh"       # обновить access_token у PostingTarget
+    ANALYZE_REEL = "analyze_reel"         # Whisper + Vision + scenes + hook classification
+    REMAKE_VIDEO = "remake_video"         # PR #6: гибридная генерация по recipe
 
 
 class ParseJob(Base):

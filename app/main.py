@@ -174,6 +174,15 @@ def run_lightweight_migrations():
         # InstagramAccount — флаг auto-download для target-аккаунтов.
         "ALTER TABLE instagram_accounts ADD COLUMN IF NOT EXISTS "
         "auto_download_media BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE instagram_accounts ADD COLUMN IF NOT EXISTS "
+        "auto_analyze_media BOOLEAN NOT NULL DEFAULT FALSE",
+        # Content Forge analyzer — результаты Whisper/Vision/scenes.
+        "ALTER TABLE reels ADD COLUMN IF NOT EXISTS transcript TEXT",
+        "ALTER TABLE reels ADD COLUMN IF NOT EXISTS visual_summary TEXT",
+        "ALTER TABLE reels ADD COLUMN IF NOT EXISTS scenes TEXT",
+        "ALTER TABLE reels ADD COLUMN IF NOT EXISTS hook_type VARCHAR(64)",
+        "ALTER TABLE reels ADD COLUMN IF NOT EXISTS analyzed_at TIMESTAMP",
+        "ALTER TABLE reels ADD COLUMN IF NOT EXISTS analysis_error TEXT",
     ]
     # Enum-расширения нужно делать в AUTOCOMMIT (Postgres не разрешает
     # ALTER TYPE ... ADD VALUE внутри транзакции).
@@ -181,6 +190,8 @@ def run_lightweight_migrations():
         "ALTER TYPE jobtype ADD VALUE IF NOT EXISTS 'GENERATE_VIDEO'",
         "ALTER TYPE jobtype ADD VALUE IF NOT EXISTS 'POST_TO_INSTAGRAM'",
         "ALTER TYPE jobtype ADD VALUE IF NOT EXISTS 'OAUTH_REFRESH'",
+        "ALTER TYPE jobtype ADD VALUE IF NOT EXISTS 'ANALYZE_REEL'",
+        "ALTER TYPE jobtype ADD VALUE IF NOT EXISTS 'REMAKE_VIDEO'",
     ]
     with engine.connect() as conn:
         for sql in migrations:

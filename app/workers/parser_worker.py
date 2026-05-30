@@ -366,9 +366,12 @@ def process_one_job(db: Session) -> bool:
     if job.job_type == JobType.GENERATE_VIDEO:
         from app.workers.generation_worker import process_generate_video_job
         return process_generate_video_job(db, job)
-    # POST_TO_INSTAGRAM / OAUTH_REFRESH — приходят в следующих PR; пока
-    # помечаем как failed, чтобы не зависали в RUNNING.
-    if job.job_type in (JobType.POST_TO_INSTAGRAM, JobType.OAUTH_REFRESH):
+    if job.job_type == JobType.ANALYZE_REEL:
+        from app.workers.analyzer_worker import process_analyze_reel_job
+        return process_analyze_reel_job(db, job)
+    # POST_TO_INSTAGRAM / OAUTH_REFRESH / REMAKE_VIDEO — приходят в
+    # следующих PR; пока помечаем как failed, чтобы не зависали в RUNNING.
+    if job.job_type in (JobType.POST_TO_INSTAGRAM, JobType.OAUTH_REFRESH, JobType.REMAKE_VIDEO):
         fail_job(db, job, f"job_type {job.job_type.value} ещё не имплементирован")
         return True
 

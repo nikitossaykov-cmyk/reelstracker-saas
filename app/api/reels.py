@@ -177,3 +177,32 @@ def reel_media_delete(
     """Удалить кэш медиа из R2 + очистить ссылки в БД (метрики и рилс остаются)."""
     reel = get_reel_by_id(db, reel_id, current_user)
     delete_reel_media(db, reel)
+
+
+@router.post("/{reel_id}/analyze")
+def reel_analyze(
+    reel_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Поставить ANALYZE_REEL задачу в очередь.
+
+    Требует:
+    - reel.media_storage_key (т.е. сначала скачать через /download)
+    - user.openai_api_key (для Whisper + Vision + classifier)
+    """
+    reel = get_reel_by_id(db, reel_id, current_user)
+    if not reel.media_storage_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Сначала скачай медиа: POST /api/reels/{id}/download",
+        )
+    if not current_user.openai_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Для анализа нужен openai_api_key в профиле "
+                   "(Whisper + Vision API).",
+        )
+    from app.services.analysis_service import create_analyze_job
+    job = create_analyze_job(db, current_user, reel)
+    return {"job_id": job.id, "status": job.status.value}

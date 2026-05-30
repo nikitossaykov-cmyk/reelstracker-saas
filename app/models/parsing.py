@@ -17,8 +17,11 @@ class JobStatus(str, enum.Enum):
 
 
 class JobType(str, enum.Enum):
-    PARSE_REEL = "parse_reel"         # одиночный парсинг рилса (legacy default)
-    SYNC_ACCOUNT = "sync_account"     # импорт списка рилсов с Instagram-аккаунта
+    PARSE_REEL = "parse_reel"             # одиночный парсинг рилса (legacy default)
+    SYNC_ACCOUNT = "sync_account"         # импорт списка рилсов с Instagram-аккаунта
+    GENERATE_VIDEO = "generate_video"     # запросить генерацию у внешнего провайдера
+    POST_TO_INSTAGRAM = "post_to_instagram"  # опубликовать через IG Graph API
+    OAUTH_REFRESH = "oauth_refresh"       # обновить access_token у PostingTarget
 
 
 class ParseJob(Base):
@@ -30,6 +33,12 @@ class ParseJob(Base):
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     # Для SYNC_ACCOUNT — ссылка на аккаунт
     account_id = Column(Integer, ForeignKey("instagram_accounts.id", ondelete="CASCADE"), nullable=True)
+    # Для GENERATE_VIDEO — запись в generated_videos
+    generated_video_id = Column(Integer, ForeignKey("generated_videos.id", ondelete="CASCADE"), nullable=True)
+    # Для POST_TO_INSTAGRAM — конкретный пост
+    post_id = Column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=True)
+    # Для OAUTH_REFRESH — целевой posting target
+    posting_target_id = Column(Integer, ForeignKey("posting_targets.id", ondelete="CASCADE"), nullable=True)
     job_type = Column(Enum(JobType), default=JobType.PARSE_REEL, nullable=False)
 
     status = Column(Enum(JobStatus), default=JobStatus.PENDING, nullable=False, index=True)

@@ -4,7 +4,7 @@
 
 import enum
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum, Float
+from sqlalchemy import Column, Integer, BigInteger, String, Boolean, DateTime, Enum, Float
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -40,9 +40,23 @@ class User(Base):
     # Apify API token (для импорта рилсов с аккаунтов через Apify actor)
     apify_token = Column(String(255), nullable=True)
 
+    # Кредитный баланс (копейки). Append-only ledger в credit_transactions
+    # — источник истины; это поле для быстрого чтения. Синхронизируется
+    # в той же транзакции что и запись в ledger.
+    credits_balance_kopecks = Column(BigInteger, default=0, nullable=False)
+
+    # Provider tokens (per-user, юзер платит провайдеру своим токеном).
+    runway_api_key = Column(String(255), nullable=True)
+    elevenlabs_api_key = Column(String(255), nullable=True)
+    openai_api_key = Column(String(255), nullable=True)
+
     # Relationships
     reels = relationship("Reel", back_populates="user", cascade="all, delete-orphan")
     parse_jobs = relationship("ParseJob", back_populates="user", cascade="all, delete-orphan")
+    generated_videos = relationship("GeneratedVideo", back_populates="user", cascade="all, delete-orphan")
+    posting_targets = relationship("PostingTarget", back_populates="user", cascade="all, delete-orphan")
+    posts = relationship("Post", back_populates="user", cascade="all, delete-orphan")
+    credit_transactions = relationship("CreditTransaction", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<User {self.email} ({self.tariff.value})>"

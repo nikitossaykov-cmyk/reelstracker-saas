@@ -12,6 +12,7 @@ from app.models.generation import (
     PostStatus,
 )
 from app.models.billing import CreditTransaction, TransactionType
+from app.models.recipe import ContentRecipe
 
 __all__ = [
     "User",
@@ -28,4 +29,5 @@ __all__ = [
     "PostStatus",
     "CreditTransaction",
     "TransactionType",
+    "ContentRecipe",
 ]

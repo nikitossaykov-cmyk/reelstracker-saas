@@ -183,6 +183,8 @@ def run_lightweight_migrations():
         "ALTER TABLE reels ADD COLUMN IF NOT EXISTS hook_type VARCHAR(64)",
         "ALTER TABLE reels ADD COLUMN IF NOT EXISTS analyzed_at TIMESTAMP",
         "ALTER TABLE reels ADD COLUMN IF NOT EXISTS analysis_error TEXT",
+        # PR #5 — content_recipes таблица создаётся через create_all,
+        # тут ничего дополнительно делать не нужно (нет ALTER колонок).
     ]
     # Enum-расширения нужно делать в AUTOCOMMIT (Postgres не разрешает
     # ALTER TYPE ... ADD VALUE внутри транзакции).
@@ -268,6 +270,7 @@ from app.api.parsing import router as parsing_router
 from app.api.accounts import router as accounts_router
 from app.api.settings_apify import router as apify_router
 from app.api.generation import router as generation_router
+from app.api.recipes import router as recipes_router
 
 app.include_router(auth_router, prefix="/api/auth", tags=["Auth"])
 app.include_router(reels_router, prefix="/api/reels", tags=["Reels"])
@@ -278,6 +281,7 @@ app.include_router(parsing_router, prefix="/api/parse", tags=["Parsing"])
 app.include_router(accounts_router, prefix="/api/accounts", tags=["Accounts"])
 app.include_router(apify_router, prefix="/api/settings/apify", tags=["Apify"])
 app.include_router(generation_router, prefix="/api/generation", tags=["Generation"])
+app.include_router(recipes_router, prefix="/api/recipes", tags=["Recipes"])
 
 # ─── Static Files ──────────────────────────────────────────
 

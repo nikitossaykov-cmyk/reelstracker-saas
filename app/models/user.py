@@ -57,6 +57,7 @@ class User(Base):
     posting_targets = relationship("PostingTarget", back_populates="user", cascade="all, delete-orphan")
     posts = relationship("Post", back_populates="user", cascade="all, delete-orphan")
     credit_transactions = relationship("CreditTransaction", back_populates="user", cascade="all, delete-orphan")
+    content_recipes = relationship("ContentRecipe", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<User {self.email} ({self.tariff.value})>"

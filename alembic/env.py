@@ -20,6 +20,7 @@ from app.models import (  # noqa: F401
     InstagramAccount,
     GeneratedVideo, PostingTarget, Post,
     CreditTransaction,
+    ContentRecipe,
 )
 
 config = context.config

@@ -54,6 +54,13 @@ class ReelResponse(BaseModel):
     media_size_bytes: Optional[int] = None
     media_downloaded_at: Optional[datetime] = None
     media_download_error: Optional[str] = None
+    # Content Forge — анализ
+    transcript: Optional[str] = None
+    visual_summary: Optional[str] = None
+    scenes: Optional[str] = None  # JSON-кодированный список
+    hook_type: Optional[str] = None
+    analyzed_at: Optional[datetime] = None
+    analysis_error: Optional[str] = None
     history: List[ReelHistoryResponse] = []
 
     model_config = {"from_attributes": True}

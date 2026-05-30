@@ -49,6 +49,16 @@ class Reel(Base):
     media_source_url = Column(Text, nullable=True)
     media_download_error = Column(Text, nullable=True)
 
+    # Content Forge — результаты анализа (Whisper / Vision / scene-detect /
+    # классификатор хука). Заполняется analyzer_worker'ом. Все опциональны
+    # и независимы — частичный анализ всё ещё полезен.
+    transcript = Column(Text, nullable=True)            # Whisper
+    visual_summary = Column(Text, nullable=True)        # GPT-4o Vision
+    scenes = Column(Text, nullable=True)                # JSON-кодированный список (TEXT для cross-db)
+    hook_type = Column(String(64), nullable=True)       # POV/Reaction/Dupe/...
+    analyzed_at = Column(DateTime, nullable=True)
+    analysis_error = Column(Text, nullable=True)
+
     # Relationships
     user = relationship("User", back_populates="reels")
     history = relationship("ReelHistory", back_populates="reel", cascade="all, delete-orphan",

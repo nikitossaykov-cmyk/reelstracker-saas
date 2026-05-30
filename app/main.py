@@ -245,6 +245,7 @@ from app.api.tariff import router as tariff_router
 from app.api.parsing import router as parsing_router
 from app.api.accounts import router as accounts_router
 from app.api.settings_apify import router as apify_router
+from app.api.generation import router as generation_router
 
 app.include_router(auth_router, prefix="/api/auth", tags=["Auth"])
 app.include_router(reels_router, prefix="/api/reels", tags=["Reels"])
@@ -254,6 +255,7 @@ app.include_router(tariff_router, prefix="/api/tariff", tags=["Tariff"])
 app.include_router(parsing_router, prefix="/api/parse", tags=["Parsing"])
 app.include_router(accounts_router, prefix="/api/accounts", tags=["Accounts"])
 app.include_router(apify_router, prefix="/api/settings/apify", tags=["Apify"])
+app.include_router(generation_router, prefix="/api/generation", tags=["Generation"])
 
 # ─── Static Files ──────────────────────────────────────────
 

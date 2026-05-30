@@ -3,7 +3,7 @@
 """
 
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, UniqueConstraint, Index, Text, Float
+from sqlalchemy import Column, BigInteger, Integer, String, Boolean, DateTime, ForeignKey, UniqueConstraint, Index, Text, Float
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -38,6 +38,16 @@ class Reel(Base):
 
     last_parsed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Content Forge — кэш самого медиа в нашем R2 для downstream-работы
+    # (анализ, ремейк, переозвучка). NULL пока не скачивали.
+    media_storage_key = Column(String(512), nullable=True)
+    media_size_bytes = Column(BigInteger, nullable=True)
+    media_downloaded_at = Column(DateTime, nullable=True)
+    # Последний известный source URL (IG-CDN). Протухает за часы, поэтому
+    # download надо делать сразу после sync. Храним для отладки.
+    media_source_url = Column(Text, nullable=True)
+    media_download_error = Column(Text, nullable=True)
 
     # Relationships
     user = relationship("User", back_populates="reels")

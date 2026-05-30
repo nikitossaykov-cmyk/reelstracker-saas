@@ -31,6 +31,11 @@ class InstagramAccount(Base):
     last_synced_at = Column(DateTime, nullable=True)
     last_sync_error = Column(Text, nullable=True)
 
+    # Content Forge — если True, при каждом sync скачиваем медиа всех новых
+    # рилсов этого аккаунта в наш R2. Включать только для аккаунтов-targets
+    # из которых будем делать ремейки (не для своих, не для broad-tracking).
+    auto_download_media = Column(Boolean, default=False, nullable=False)
+
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     user = relationship("User")

@@ -81,3 +81,33 @@ def get_generation(
             detail=f"Generation #{generation_id} не найдена",
         )
     return gv
+
+
+@router.post("/{generation_id}/uniqify", response_model=GeneratedVideoResponse)
+def uniqify_generation(
+    generation_id: int,
+    overwrite: bool = False,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Применить anti-fingerprint preset (hue/scale/rotate/speed/noise/pitch)
+    к media_storage_key. Создаёт отдельную uniq-копию в R2 (оригинал остаётся).
+
+    Используется перед публикацией, чтобы перцептивный хэш и audio
+    fingerprint не совпадали с источником.
+    """
+    gv = get_generation_by_id(db, generation_id, current_user)
+    if gv is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"Generation #{generation_id} не найдена")
+    if not gv.media_storage_key:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Видео ещё не сгенерировано (media_storage_key пуст)")
+    from app.services.uniqify_service import uniqify_generated_video
+    from app.core.uniqualizer import UniqifyError
+    try:
+        uniqify_generated_video(db, gv, overwrite=overwrite)
+    except UniqifyError as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+    db.refresh(gv)
+    return gv

@@ -192,6 +192,10 @@ def run_lightweight_migrations():
         "ON generated_videos(source_reel_id)",
         "CREATE INDEX IF NOT EXISTS ix_generated_videos_source_recipe "
         "ON generated_videos(source_recipe_id)",
+        # PR #8 — uniq media копия
+        "ALTER TABLE generated_videos ADD COLUMN IF NOT EXISTS uniq_media_url VARCHAR(1024)",
+        "ALTER TABLE generated_videos ADD COLUMN IF NOT EXISTS uniq_storage_key VARCHAR(512)",
+        "ALTER TABLE generated_videos ADD COLUMN IF NOT EXISTS uniqified_at TIMESTAMP",
     ]
     # Enum-расширения нужно делать в AUTOCOMMIT (Postgres не разрешает
     # ALTER TYPE ... ADD VALUE внутри транзакции).

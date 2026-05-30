@@ -296,6 +296,7 @@ from app.api.recipes import router as recipes_router
 from app.api.remakes import router as remakes_router
 from app.api.posting_targets import router as posting_targets_router
 from app.api.posts import router as posts_router
+from app.api.voice import router as voice_router
 
 app.include_router(auth_router, prefix="/api/auth", tags=["Auth"])
 app.include_router(reels_router, prefix="/api/reels", tags=["Reels"])
@@ -310,6 +311,7 @@ app.include_router(recipes_router, prefix="/api/recipes", tags=["Recipes"])
 app.include_router(remakes_router, prefix="/api/remakes", tags=["Remakes"])
 app.include_router(posting_targets_router, prefix="/api/posting-targets", tags=["PostingTargets"])
 app.include_router(posts_router, prefix="/api/posts", tags=["Posts"])
+app.include_router(voice_router, prefix="/api/voice", tags=["Voice"])
 
 # ─── Static Files ──────────────────────────────────────────
 

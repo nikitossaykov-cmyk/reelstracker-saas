@@ -154,6 +154,22 @@ def run_lightweight_migrations():
         "UPDATE parse_jobs SET job_type = 'PARSE_REEL' WHERE job_type IS NULL",
         # users: Apify token
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS apify_token VARCHAR(255)",
+        # users: кредитный баланс + per-user provider ключи (для generation MVP)
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS credits_balance_kopecks BIGINT NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS runway_api_key VARCHAR(255)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS elevenlabs_api_key VARCHAR(255)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS openai_api_key VARCHAR(255)",
+        # parse_jobs: FK на новые сущности из generation MVP
+        "ALTER TABLE parse_jobs ADD COLUMN IF NOT EXISTS generated_video_id INTEGER",
+        "ALTER TABLE parse_jobs ADD COLUMN IF NOT EXISTS post_id INTEGER",
+        "ALTER TABLE parse_jobs ADD COLUMN IF NOT EXISTS posting_target_id INTEGER",
+    ]
+    # Enum-расширения нужно делать в AUTOCOMMIT (Postgres не разрешает
+    # ALTER TYPE ... ADD VALUE внутри транзакции).
+    enum_extensions = [
+        "ALTER TYPE jobtype ADD VALUE IF NOT EXISTS 'GENERATE_VIDEO'",
+        "ALTER TYPE jobtype ADD VALUE IF NOT EXISTS 'POST_TO_INSTAGRAM'",
+        "ALTER TYPE jobtype ADD VALUE IF NOT EXISTS 'OAUTH_REFRESH'",
     ]
     with engine.connect() as conn:
         for sql in migrations:
@@ -162,6 +178,12 @@ def run_lightweight_migrations():
                 conn.commit()
             except Exception as e:
                 logger.warning(f"Миграция '{sql[:60]}...' не прошла: {e}")
+    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+        for sql in enum_extensions:
+            try:
+                conn.execute(text(sql))
+            except Exception as e:
+                logger.warning(f"Enum-расширение '{sql[:60]}...' не прошло: {e}")
 
 
 @asynccontextmanager

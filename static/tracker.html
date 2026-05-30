@@ -125,6 +125,10 @@
         /* Tariff badge */
         .badge-pro { background: linear-gradient(135deg, #f59e0b, #ef4444); color: white; }
         .badge-free { background: rgba(255,255,255,0.06); color: #a1a1aa; }
+
+        /* Tabs */
+        .tab-active { background: rgba(139,92,246,0.18); color: white; }
+        .tab-btn { outline: none; }
     </style>
 </head>
 <body>
@@ -164,6 +168,14 @@
     </header>
 
     <main class="max-w-7xl mx-auto px-6 py-8">
+
+        <!-- Tabs -->
+        <div class="flex items-center gap-1 mb-6 bg-white/5 p-1 rounded-xl w-fit">
+            <button data-tab="reels" class="tab-btn tab-active px-4 py-1.5 rounded-lg text-sm font-medium transition-colors">Рилсы</button>
+            <button data-tab="accounts" class="tab-btn px-4 py-1.5 rounded-lg text-sm font-medium transition-colors text-zinc-400 hover:text-white">Аккаунты</button>
+        </div>
+
+        <div id="tab-reels">
 
         <!-- Stats Grid -->
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8 fade-in">
@@ -230,7 +242,48 @@
         <!-- Reels List -->
         <div id="reelsList" class="space-y-4"></div>
 
+        </div><!-- /tab-reels -->
+
+        <!-- Tab: Accounts -->
+        <div id="tab-accounts" class="hidden">
+            <div class="flex items-center gap-3 mb-6 flex-wrap">
+                <button id="btnAddAccount" class="btn-primary text-white px-5 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                    Добавить аккаунт
+                </button>
+                <div class="flex-1"></div>
+            </div>
+            <div id="accountsList" class="grid gap-4 md:grid-cols-2"></div>
+            <div id="accountDetail" class="hidden mt-6"></div>
+        </div>
+
     </main>
+
+    <!-- Modal: Add Account -->
+    <div id="modalAddAccount" class="hidden fixed inset-0 modal-overlay flex items-center justify-center p-4 z-50">
+        <div class="glass rounded-2xl max-w-md w-full p-6 fade-in" style="background: #1a1a22; border: 1px solid rgba(255,255,255,0.08);">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-xl font-bold text-white">Добавить Instagram-аккаунт</h2>
+                <button class="text-zinc-500 hover:text-white" onclick="document.getElementById('modalAddAccount').classList.add('hidden')">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <p class="text-zinc-400 text-sm mb-4">Сервис загрузит профиль и все рилсы с этого аккаунта.</p>
+            <form id="formAddAccount" class="space-y-4">
+                <div>
+                    <label class="block text-zinc-400 text-xs font-medium mb-2">Username</label>
+                    <div class="flex items-center bg-zinc-900/60 border border-white/10 rounded-lg pl-3">
+                        <span class="text-zinc-500 text-sm">@</span>
+                        <input type="text" name="username" required placeholder="username" class="bg-transparent flex-1 px-2 py-2.5 text-white text-sm outline-none" autocomplete="off">
+                    </div>
+                </div>
+                <div id="addAccountError" class="hidden text-red-400 text-xs"></div>
+                <button type="submit" class="btn-primary text-white w-full py-2.5 rounded-lg text-sm font-semibold">
+                    Добавить и загрузить рилсы
+                </button>
+            </form>
+        </div>
+    </div>
 
     <!-- Modal: Add Reel -->
     <div id="modalAdd" class="hidden fixed inset-0 modal-overlay flex items-center justify-center p-4 z-50">
@@ -321,34 +374,57 @@
     <div id="modalSettings" class="hidden fixed inset-0 modal-overlay flex items-center justify-center p-4 z-50">
         <div class="rounded-2xl max-w-lg w-full p-6 fade-in" style="background: #1a1a22; border: 1px solid rgba(255,255,255,0.08);">
             <div class="flex items-center justify-between mb-6">
-                <h2 class="text-lg font-bold text-white">Настройки Telegram</h2>
+                <h2 class="text-lg font-bold text-white">Настройки</h2>
                 <button id="btnCloseSettings" class="text-zinc-500 hover:text-white transition-colors">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
             </div>
             <div id="settingsMsg" class="hidden text-sm mb-4 p-3 rounded-lg"></div>
-            <div class="space-y-4">
-                <label class="flex items-center gap-3 cursor-pointer">
-                    <input type="checkbox" id="tgEnabled" class="w-4 h-4 accent-violet-500">
-                    <span class="text-sm text-zinc-300">Включить уведомления</span>
-                </label>
-                <div>
-                    <label class="block text-xs text-zinc-400 font-medium mb-2">Bot Token</label>
-                    <input type="text" id="tgBotToken" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-zinc-600 focus:outline-none focus:border-violet-500/50" placeholder="123456:ABC-DEF...">
+
+            <!-- Telegram -->
+            <details open class="mb-4">
+                <summary class="cursor-pointer text-white font-semibold text-sm mb-3 select-none">Telegram</summary>
+                <div class="space-y-4 pt-3">
+                    <label class="flex items-center gap-3 cursor-pointer">
+                        <input type="checkbox" id="tgEnabled" class="w-4 h-4 accent-violet-500">
+                        <span class="text-sm text-zinc-300">Включить уведомления</span>
+                    </label>
+                    <div>
+                        <label class="block text-xs text-zinc-400 font-medium mb-2">Bot Token</label>
+                        <input type="text" id="tgBotToken" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-zinc-600 focus:outline-none focus:border-violet-500/50" placeholder="123456:ABC-DEF...">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-zinc-400 font-medium mb-2">Chat ID</label>
+                        <input type="text" id="tgChatId" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-zinc-600 focus:outline-none focus:border-violet-500/50" placeholder="-1001234567890">
+                    </div>
+                    <div class="flex gap-2">
+                        <button id="btnTestTg" class="flex-1 btn-ghost text-zinc-300 py-3 rounded-xl text-sm font-medium">Тест</button>
+                        <button id="btnSaveTg" class="flex-1 btn-primary text-white py-3 rounded-xl text-sm font-semibold">Сохранить</button>
+                    </div>
                 </div>
-                <div>
-                    <label class="block text-xs text-zinc-400 font-medium mb-2">Chat ID</label>
-                    <input type="text" id="tgChatId" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-zinc-600 focus:outline-none focus:border-violet-500/50" placeholder="-1001234567890">
+            </details>
+
+            <!-- Apify -->
+            <details class="mb-2">
+                <summary class="cursor-pointer text-white font-semibold text-sm mb-3 select-none">Apify API (импорт рилсов аккаунта)</summary>
+                <div class="space-y-3 pt-3">
+                    <p class="text-xs text-zinc-500 leading-relaxed">
+                        Для надёжного импорта всех рилсов аккаунта. Бесплатные $5 кредита в месяц.
+                        Создай токен в
+                        <a href="https://console.apify.com/settings/integrations" target="_blank" class="text-violet-400 hover:text-violet-300">Apify → Settings → API & Integrations</a>
+                        и вставь сюда.
+                    </p>
+                    <div id="apifyStatus" class="text-xs text-zinc-400"></div>
+                    <div>
+                        <label class="block text-xs text-zinc-400 font-medium mb-2">API Token</label>
+                        <input type="password" id="apifyToken" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-zinc-600 focus:outline-none focus:border-violet-500/50" placeholder="apify_api_...">
+                    </div>
+                    <div class="flex gap-2">
+                        <button id="btnClearApify" class="flex-1 btn-ghost text-zinc-300 py-2.5 rounded-xl text-sm font-medium">Удалить</button>
+                        <button id="btnSaveApify" class="flex-1 btn-primary text-white py-2.5 rounded-xl text-sm font-semibold">Сохранить</button>
+                    </div>
                 </div>
-                <div class="flex gap-2">
-                    <button id="btnTestTg" class="flex-1 btn-ghost text-zinc-300 py-3 rounded-xl text-sm font-medium">
-                        Тест
-                    </button>
-                    <button id="btnSaveTg" class="flex-1 btn-primary text-white py-3 rounded-xl text-sm font-semibold">
-                        Сохранить
-                    </button>
-                </div>
-            </div>
+            </details>
         </div>
     </div>
 
@@ -426,6 +502,529 @@
         const modalSettings = document.getElementById('modalSettings');
         const reelsList = document.getElementById('reelsList');
         const syncStatus = document.getElementById('syncStatus');
+        const accountsList = document.getElementById('accountsList');
+        const accountDetail = document.getElementById('accountDetail');
+        let accounts = [];
+        let currentAccountId = null;
+
+        // ─── Tabs ─────────────────────────────────────────
+        function switchTab(name) {
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                if (btn.dataset.tab === name) {
+                    btn.classList.add('tab-active');
+                    btn.classList.remove('text-zinc-400');
+                } else {
+                    btn.classList.remove('tab-active');
+                    btn.classList.add('text-zinc-400');
+                }
+            });
+            document.getElementById('tab-reels').classList.toggle('hidden', name !== 'reels');
+            document.getElementById('tab-accounts').classList.toggle('hidden', name !== 'accounts');
+            if (name === 'accounts') loadAccounts();
+        }
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+        });
+
+        // ─── Accounts ─────────────────────────────────────
+        async function loadAccounts() {
+            try {
+                const res = await authFetch(API + '/accounts');
+                if (!res.ok) { accountsList.innerHTML = ''; return; }
+                accounts = await res.json();
+                // Параллельно подгружаем по 10 свежих рилсов на аккаунт для мини-блока
+                await Promise.all(accounts.map(async (acc) => {
+                    try {
+                        const rr = await authFetch(API + `/accounts/${acc.id}/reels`);
+                        if (rr.ok) {
+                            const list = await rr.json();
+                            acc._top_reels = list.slice(0, 10);
+                        } else {
+                            acc._top_reels = [];
+                        }
+                    } catch { acc._top_reels = []; }
+                }));
+                renderAccounts();
+            } catch (e) { console.error('loadAccounts:', e); }
+        }
+
+        function renderAccounts() {
+            accountDetail.classList.add('hidden');
+            currentAccountId = null;
+            if (!accounts.length) {
+                accountsList.innerHTML = `
+                    <div class="glass rounded-2xl p-12 text-center col-span-full">
+                        <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-white/5 flex items-center justify-center">
+                            <svg class="w-8 h-8 text-zinc-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+                        </div>
+                        <p class="text-zinc-400 text-sm mb-1">Пока нет аккаунтов</p>
+                        <p class="text-zinc-600 text-xs">Нажмите «Добавить аккаунт» — сервис загрузит все рилсы из профиля</p>
+                    </div>`;
+                return;
+            }
+            accountsList.innerHTML = accounts.map(acc => {
+                // unavatar.io скрейпит IG и кеширует — самый надёжный источник аватара по нику.
+                // Если у нас уже есть свежий profile_pic_url из IG-CDN — пробуем его как fallback (через wsrv.nl).
+                const ua = `https://unavatar.io/instagram/${encodeURIComponent(acc.instagram_username)}`;
+                const avatarPrimary = ua;
+                const avatarFallback = acc.profile_pic_url
+                    ? `https://wsrv.nl/?url=${encodeURIComponent(acc.profile_pic_url)}&w=96&h=96&fit=cover`
+                    : ua;
+                const avatarLetter = (acc.instagram_username || '?').charAt(0).toUpperCase();
+                const lastSync = acc.last_synced_at
+                    ? new Date(acc.last_synced_at).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+                    : 'ещё не синхронизирован';
+                const err = acc.last_sync_error ? `<div class="text-red-400 text-[11px] mt-1 truncate" title="${acc.last_sync_error}">⚠ ${acc.last_sync_error}</div>` : '';
+
+                // Мини-блок: 10 свежих рилсов и агрегаты
+                const topReels = (acc._top_reels || []).slice(0, 10);
+                let aggBlock = '';
+                let stripBlock = '';
+                if (topReels.length > 0) {
+                    const totalViews = topReels.reduce((s, r) => s + (r.views || 0), 0);
+                    const totalLikes = topReels.reduce((s, r) => s + (r.likes || 0), 0);
+                    const avgViews = Math.round(totalViews / topReels.length);
+                    const sparkId = `acc_spark_${acc.id}`;
+                    aggBlock = `
+                        <div class="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-white/5">
+                            <div>
+                                <div class="text-[10px] text-zinc-500 uppercase tracking-wider">Сумма (топ-${topReels.length})</div>
+                                <div class="text-white text-sm font-bold">${fmtNum(totalViews)}</div>
+                            </div>
+                            <div>
+                                <div class="text-[10px] text-zinc-500 uppercase tracking-wider">Среднее</div>
+                                <div class="text-white text-sm font-bold">${fmtNum(avgViews)}</div>
+                            </div>
+                            <div>
+                                <div class="text-[10px] text-zinc-500 uppercase tracking-wider">Лайки</div>
+                                <div class="text-white text-sm font-bold">${fmtNum(totalLikes)}</div>
+                            </div>
+                        </div>
+                        <div class="mt-3"><canvas id="${sparkId}" class="sparkline-canvas" style="height: 40px;"></canvas></div>
+                    `;
+                    stripBlock = `
+                        <div class="mt-4 flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+                            ${topReels.map(r => {
+                                const t = r.thumbnail_url ? `https://wsrv.nl/?url=${encodeURIComponent(r.thumbnail_url)}&w=120&h=120&fit=cover` : '';
+                                return `
+                                <a href="${r.url}" target="_blank" onclick="event.stopPropagation()" class="flex-shrink-0 w-14 h-14 rounded-lg overflow-hidden bg-white/5 relative" title="#${r.position_in_account || ''} · ${fmtNum(r.views||0)} views">
+                                    ${t ? `<img src="${t}" alt="" class="w-full h-full object-cover" onerror="this.remove()"/>` : ''}
+                                    <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent text-white text-[9px] font-bold px-1 py-0.5">${fmtNum(r.views||0)}</div>
+                                </a>`;
+                            }).join('')}
+                        </div>
+                    `;
+                }
+
+                return `
+                <div class="glass rounded-2xl p-5 cursor-pointer card-transition" onclick="openAccount(${acc.id})">
+                    <div class="flex items-start gap-4">
+                        <div class="w-14 h-14 rounded-full overflow-hidden bg-white/5 flex-shrink-0">
+                            <img src="${avatarPrimary}" alt="" class="w-full h-full object-cover"
+                                 onerror="this.onerror=function(){this.onerror=null;this.outerHTML='<div class=&quot;w-full h-full flex items-center justify-center text-zinc-300 font-bold text-base bg-violet-500/20&quot;>${avatarLetter}</div>';};this.src='${avatarFallback}'"
+                            />
+                        </div>
+                        <div class="min-w-0 flex-1">
+                            <div class="text-white font-semibold text-base truncate">${acc.full_name || acc.instagram_username}</div>
+                            <div class="text-zinc-500 text-xs truncate">@${acc.instagram_username}</div>
+                            <div class="flex items-center gap-3 text-[11px] text-zinc-500 mt-2">
+                                <span>${fmtNum(acc.followers_count || 0)} подп.</span>
+                                <span>·</span>
+                                <span>${acc.reels_count || 0} рилсов</span>
+                            </div>
+                            <div class="text-[11px] text-zinc-600 mt-1">Синк: ${lastSync}</div>
+                            ${err}
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <button onclick="event.stopPropagation(); syncAccount(${acc.id})" title="Обновить" class="btn-ghost text-zinc-400 p-2 rounded-lg">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                            </button>
+                            <button onclick="event.stopPropagation(); deleteAccount(${acc.id})" title="Удалить" class="btn-ghost text-zinc-500 hover:text-red-400 p-2 rounded-lg">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                    ${aggBlock}
+                    ${stripBlock}
+                </div>`;
+            }).join('');
+
+            // Рисуем sparkline'ы в каждой карточке
+            accounts.forEach(acc => {
+                const top = (acc._top_reels || []).slice(0, 10);
+                if (!top.length) return;
+                const reversed = [...top].reverse(); // от старых к свежим слева→направо
+                const data = reversed.map(r => r.views || 0);
+                drawSparkline(`acc_spark_${acc.id}`, data, '#a78bfa', {
+                    highlightPeaks: true,
+                    labels: reversed.map(r => `#${r.position_in_account || '-'} · ${(r.title || '').slice(0, 36)}`),
+                    valueFmt: (v) => fmtNum(v) + ' просм.',
+                });
+            });
+        }
+
+        window.openAccount = async function(id) {
+            currentAccountId = id;
+            accountsList.innerHTML = '';
+            accountDetail.classList.remove('hidden');
+            accountDetail.innerHTML = '<div class="text-zinc-500 text-sm">Загружаю рилсы...</div>';
+            try {
+                const acc = accounts.find(a => a.id === id);
+                const res = await authFetch(API + `/accounts/${id}/reels`);
+                let list = res.ok ? await res.json() : [];
+                // Маппим историю в формат, ожидаемый calcGrowth/drawSparkline (parsed_at → date)
+                list = list.map(r => ({
+                    ...r,
+                    history: (r.history || []).map(h => ({
+                        views: h.views, likes: h.likes, comments: h.comments, shares: h.shares,
+                        date: h.parsed_at,
+                    })),
+                }));
+
+                // ─── Аналитика ───────────────────────────────
+                const totalViews = list.reduce((s, r) => s + (r.views || 0), 0);
+                const totalLikes = list.reduce((s, r) => s + (r.likes || 0), 0);
+                const totalComments = list.reduce((s, r) => s + (r.comments || 0), 0);
+                const avgViews = list.length ? Math.round(totalViews / list.length) : 0;
+                const avgLikes = list.length ? Math.round(totalLikes / list.length) : 0;
+                const avgER = list.length
+                    ? (list.reduce((s, r) => s + parseFloat(calcER(r)), 0) / list.length).toFixed(2)
+                    : '0';
+                const top10 = list.slice(0, 10);
+                const top10Views = top10.reduce((s, r) => s + (r.views || 0), 0);
+                const bestReel = list.reduce((b, r) => (!b || (r.views || 0) > (b.views || 0)) ? r : b, null);
+
+                // Распределение по дате публикации (последние 30 дней — кол-во рилсов)
+                const now = new Date();
+                const days = 30;
+                const buckets = Array.from({length: days}, () => ({date: null, count: 0, views: 0}));
+                for (let i = 0; i < days; i++) {
+                    const d = new Date(now); d.setDate(now.getDate() - (days - 1 - i)); d.setHours(0,0,0,0);
+                    buckets[i].date = d;
+                }
+                list.forEach(r => {
+                    if (!r.published_at) return;
+                    const d = new Date(r.published_at); d.setHours(0,0,0,0);
+                    const idx = Math.floor((d - buckets[0].date) / (1000*60*60*24));
+                    if (idx >= 0 && idx < days) {
+                        buckets[idx].count++;
+                        buckets[idx].views += (r.views || 0);
+                    }
+                });
+                const dailyCounts = buckets.map(b => b.count);
+                const dailyViews = buckets.map(b => b.views);
+                const totalLast30Reels = dailyCounts.reduce((s, x) => s + x, 0);
+                const totalLast30Views = dailyViews.reduce((s, x) => s + x, 0);
+
+                const ua = `https://unavatar.io/instagram/${encodeURIComponent(acc.instagram_username)}`;
+                const avatarPrimary = ua;
+                const avatarFallback = acc.profile_pic_url
+                    ? `https://wsrv.nl/?url=${encodeURIComponent(acc.profile_pic_url)}&w=128&h=128&fit=cover`
+                    : ua;
+                const avatarLetter = (acc.instagram_username || '?').charAt(0).toUpperCase();
+
+                accountDetail.innerHTML = `
+                    <div class="flex items-center gap-3 mb-6">
+                        <button onclick="renderAccounts()" class="btn-ghost text-zinc-400 p-2 rounded-lg">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                        </button>
+                        <div class="w-12 h-12 rounded-full overflow-hidden bg-white/5 flex-shrink-0">
+                            <img src="${avatarPrimary}" alt="" class="w-full h-full object-cover"
+                                 onerror="this.onerror=function(){this.onerror=null;this.outerHTML='<div class=&quot;w-full h-full flex items-center justify-center text-zinc-200 font-bold text-lg bg-violet-500/20&quot;>${avatarLetter}</div>';};this.src='${avatarFallback}'"
+                            />
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <div class="text-white font-bold text-lg truncate">@${acc.instagram_username}</div>
+                            <div class="text-zinc-500 text-xs truncate">${fmtNum(acc.followers_count||0)} подп. · ${list.length} рилсов · синк: ${acc.last_synced_at ? new Date(acc.last_synced_at).toLocaleString('ru-RU', {day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : '—'}</div>
+                        </div>
+                        <button onclick="syncAccount(${id})" class="btn-ghost text-zinc-300 px-3 py-1.5 rounded-lg text-xs">Обновить</button>
+                    </div>
+
+                    <!-- KPI ─── -->
+                    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+                        <div class="glass rounded-xl p-4">
+                            <div class="text-[10px] text-zinc-500 uppercase tracking-wider">Просмотры (всего)</div>
+                            <div class="text-white text-2xl font-bold mt-1">${fmtNum(totalViews)}</div>
+                            <div class="text-[11px] text-zinc-500 mt-1">~${fmtNum(avgViews)} в среднем</div>
+                        </div>
+                        <div class="glass rounded-xl p-4">
+                            <div class="text-[10px] text-zinc-500 uppercase tracking-wider">Лайки (всего)</div>
+                            <div class="text-white text-2xl font-bold mt-1">${fmtNum(totalLikes)}</div>
+                            <div class="text-[11px] text-zinc-500 mt-1">~${fmtNum(avgLikes)} в среднем</div>
+                        </div>
+                        <div class="glass rounded-xl p-4">
+                            <div class="text-[10px] text-zinc-500 uppercase tracking-wider">Комментарии</div>
+                            <div class="text-white text-2xl font-bold mt-1">${fmtNum(totalComments)}</div>
+                            <div class="text-[11px] text-zinc-500 mt-1">средний ER ${avgER}%</div>
+                        </div>
+                        <div class="glass rounded-xl p-4">
+                            <div class="text-[10px] text-zinc-500 uppercase tracking-wider">За 30 дней</div>
+                            <div class="text-white text-2xl font-bold mt-1">${totalLast30Reels} рилсов</div>
+                            <div class="text-[11px] text-zinc-500 mt-1">${fmtNum(totalLast30Views)} просмотров</div>
+                        </div>
+                    </div>
+
+                    <!-- Графики ─── -->
+                    <div class="grid lg:grid-cols-2 gap-3 mb-6">
+                        <div class="glass rounded-xl p-4">
+                            <div class="flex items-center justify-between mb-3">
+                                <div class="text-white text-sm font-semibold">Просмотры топ-10</div>
+                                <div class="text-[11px] text-zinc-500">сумма ${fmtNum(top10Views)}</div>
+                            </div>
+                            <canvas id="acc_detail_views" style="height:90px"></canvas>
+                        </div>
+                        <div class="glass rounded-xl p-4">
+                            <div class="flex items-center justify-between mb-3">
+                                <div class="text-white text-sm font-semibold">Активность за 30 дней</div>
+                                <div class="text-[11px] text-zinc-500">${totalLast30Reels} публикаций</div>
+                            </div>
+                            <canvas id="acc_detail_daily" style="height:90px"></canvas>
+                        </div>
+                    </div>
+
+                    ${bestReel ? `
+                        <div class="glass rounded-xl p-4 mb-6 border border-emerald-500/20">
+                            <div class="flex items-center gap-3">
+                                <div class="text-2xl">🏆</div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="text-emerald-400 text-[11px] font-semibold uppercase">Лучший рилс</div>
+                                    <a href="${bestReel.url}" target="_blank" class="text-white font-medium text-sm truncate block hover:text-violet-400">${bestReel.title || bestReel.caption?.slice(0, 80) || 'Reel'}</a>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-white text-lg font-bold">${fmtNum(bestReel.views||0)}</div>
+                                    <div class="text-[11px] text-zinc-500">просмотров</div>
+                                </div>
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    <!-- Toolbar: сортировка + фильтр VIRAL ─── -->
+                    <div class="flex items-center justify-between mb-3 gap-3 flex-wrap">
+                        <div class="text-zinc-400 text-xs uppercase tracking-wider font-semibold">Все рилсы <span id="acc_grid_count" class="text-zinc-600 normal-case">(${list.length})</span></div>
+                        <div class="flex items-center gap-2">
+                            <button id="acc_filter_viral" class="btn-ghost text-zinc-300 text-xs px-3 py-1.5 rounded-lg flex items-center gap-1" onclick="toggleAccountViralFilter()">
+                                <span class="text-emerald-400">🔥</span> Только VIRAL
+                            </button>
+                            <select id="acc_sort_select" onchange="renderAccountGrid()"
+                                class="bg-white/5 border border-white/10 text-zinc-200 text-xs rounded-lg px-2.5 py-1.5 outline-none cursor-pointer hover:bg-white/10 transition">
+                                <option value="position">По позиции (свежесть)</option>
+                                <option value="views">По просмотрам ↓</option>
+                                <option value="published">По дате публикации ↓</option>
+                                <option value="likes">По лайкам ↓</option>
+                                <option value="er">По ER ↓</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Сетка рилсов ─── -->
+                    <div id="acc_reels_grid" class="grid gap-3 md:grid-cols-2 lg:grid-cols-3"></div>
+                `;
+
+                // Сохраняем список и рендерим сетку через переиспользуемую функцию
+                window._currentAccountReels = list;
+                window._currentAccountFilterViral = false;
+                renderAccountGrid();
+
+                // ─── Графики с tooltip + подсветкой пиков ─────────────
+                if (top10.length >= 2) {
+                    const top10Reversed = [...top10].reverse();
+                    drawSparkline(
+                        'acc_detail_views',
+                        top10Reversed.map(r => r.views || 0),
+                        '#a78bfa',
+                        {
+                            highlightPeaks: true,
+                            labels: top10Reversed.map(r => `#${r.position_in_account || '-'} · ${(r.title || '').slice(0, 40)}`),
+                            valueFmt: (v) => fmtNum(v) + ' просм.',
+                        }
+                    );
+                }
+                if (dailyCounts.some(x => x > 0)) {
+                    drawSparkline(
+                        'acc_detail_daily',
+                        dailyCounts,
+                        '#34d399',
+                        {
+                            highlightPeaks: true,
+                            labels: buckets.map(b => b.date.toLocaleDateString('ru-RU', {day:'numeric', month:'short'})),
+                            valueFmt: (v) => v + (v === 1 ? ' рилс' : (v >= 2 && v <= 4 ? ' рилса' : ' рилсов')),
+                        }
+                    );
+                }
+            } catch (e) {
+                accountDetail.innerHTML = '<div class="text-red-400 text-sm">Ошибка загрузки: ' + e.message + '</div>';
+            }
+        };
+
+        // Re-рендер сетки рилсов внутри аккаунта (с учётом сортировки и фильтра)
+        window.renderAccountGrid = function() {
+            const grid = document.getElementById('acc_reels_grid');
+            const counter = document.getElementById('acc_grid_count');
+            if (!grid) return;
+            const all = window._currentAccountReels || [];
+            const sortMode = (document.getElementById('acc_sort_select') || {}).value || 'position';
+            const onlyViral = !!window._currentAccountFilterViral;
+
+            // Фильтр VIRAL: либо больше 1M просмотров, либо рост > 500/час
+            const isViralReel = (r) => {
+                if ((r.views || 0) >= 1_000_000) return true;
+                const g = calcGrowth(r.history || []);
+                if (g.hasData && g.perHour > 500) return true;
+                return false;
+            };
+
+            let arr = onlyViral ? all.filter(isViralReel) : all.slice();
+
+            const sorters = {
+                position: (a, b) => (a.position_in_account || 9999) - (b.position_in_account || 9999),
+                views: (a, b) => (b.views || 0) - (a.views || 0),
+                published: (a, b) => new Date(b.published_at || 0) - new Date(a.published_at || 0),
+                likes: (a, b) => (b.likes || 0) - (a.likes || 0),
+                er: (a, b) => parseFloat(calcER(b)) - parseFloat(calcER(a)),
+            };
+            arr.sort(sorters[sortMode] || sorters.position);
+
+            if (counter) {
+                counter.textContent = onlyViral
+                    ? `(${arr.length} из ${all.length} · VIRAL)`
+                    : `(${arr.length})`;
+            }
+
+            if (!arr.length) {
+                grid.innerHTML = '<div class="text-zinc-500 text-sm col-span-full glass rounded-xl p-6 text-center">Нет рилсов под фильтр</div>';
+                return;
+            }
+
+            grid.innerHTML = arr.map(r => {
+                const th = r.thumbnail_url ? `https://wsrv.nl/?url=${encodeURIComponent(r.thumbnail_url)}&w=240&h=240&fit=cover` : '';
+                const viral = isViralReel(r);
+
+                // Динамика — берём последние ≤ 20 точек истории
+                const hist = (r.history || []).slice(-20);
+                const growth = calcGrowth(r.history || []);
+                const er = calcER(r);
+
+                let trendArrow = '';
+                let trendText = '';
+                let trendColor = 'text-zinc-500';
+                if (growth.hasData) {
+                    if (growth.lastDiff > 0) { trendArrow = '↑'; trendColor = 'text-emerald-400'; }
+                    else if (growth.lastDiff < 0) { trendArrow = '↓'; trendColor = 'text-red-400'; }
+                    else { trendArrow = '→'; trendColor = 'text-zinc-500'; }
+                    trendText = (growth.lastDiff > 0 ? '+' : '') + fmtNum(growth.lastDiff);
+                }
+
+                const sparkId = `acc_grid_spark_${r.id}`;
+                const sparkBlock = hist.length >= 2
+                    ? `<div class="mt-2 relative" style="height:32px"><canvas id="${sparkId}" style="height:32px;width:100%"></canvas></div>`
+                    : '<div class="mt-2 text-[10px] text-zinc-600 italic">мало данных для динамики</div>';
+
+                const growthLine = growth.hasData
+                    ? `<div class="flex items-center justify-between mt-1.5 text-[10px]">
+                            <span class="${trendColor} font-semibold">${trendArrow} ${trendText} с прошлой проверки</span>
+                            <span class="text-zinc-500">≈ ${fmtNum(growth.perHour)}/ч · ER ${er}%</span>
+                       </div>`
+                    : `<div class="mt-1.5 text-[10px] text-zinc-600">ER ${er}%</div>`;
+
+                return `
+                <div class="glass rounded-xl overflow-hidden card-transition relative ${viral ? 'ring-1 ring-emerald-500/30' : ''}">
+                    <a href="${r.url}" target="_blank" class="block">
+                        <div class="aspect-square bg-white/5 relative">
+                            ${th ? `<img src="${th}" alt="" class="w-full h-full object-cover" onerror="this.remove()" />` : '<div class="w-full h-full flex items-center justify-center text-zinc-600">📱</div>'}
+                            <div class="absolute top-2 left-2 bg-black/60 text-white text-[10px] font-bold px-2 py-0.5 rounded">#${r.position_in_account || '-'}</div>
+                            ${viral ? '<div class="absolute top-2 right-2 bg-emerald-500/85 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow">🔥 VIRAL</div>' : ''}
+                        </div>
+                    </a>
+                    <div class="p-3">
+                        <a href="${r.url}" target="_blank" class="text-white text-xs font-medium truncate block hover:text-violet-300">${r.title || ''}</a>
+                        <div class="flex items-center gap-2 text-[10px] text-zinc-500 mt-1">
+                            <span>👁 ${fmtNum(r.views || 0)}</span>
+                            <span>❤ ${fmtNum(r.likes || 0)}</span>
+                            <span>💬 ${fmtNum(r.comments || 0)}</span>
+                        </div>
+                        ${sparkBlock}
+                        ${growthLine}
+                    </div>
+                </div>`;
+            }).join('');
+
+            // Рисуем sparkline'ы динамики после вставки HTML
+            arr.forEach(r => {
+                const hist = (r.history || []).slice(-20);
+                if (hist.length < 2) return;
+                const sparkData = hist.map(h => h.views || 0);
+                const labels = hist.map(h => new Date(h.date).toLocaleString('ru-RU', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'}));
+                const viral = isViralReel(r);
+                drawSparkline(`acc_grid_spark_${r.id}`, sparkData, viral ? '#34d399' : '#a78bfa', {
+                    highlightPeaks: true,
+                    labels,
+                    valueFmt: (v) => fmtNum(v) + ' просм.',
+                });
+            });
+        };
+
+        window.toggleAccountViralFilter = function() {
+            window._currentAccountFilterViral = !window._currentAccountFilterViral;
+            const btn = document.getElementById('acc_filter_viral');
+            if (btn) {
+                if (window._currentAccountFilterViral) {
+                    btn.classList.remove('btn-ghost', 'text-zinc-300');
+                    btn.classList.add('bg-emerald-500/20', 'text-emerald-300', 'ring-1', 'ring-emerald-500/40');
+                } else {
+                    btn.classList.add('btn-ghost', 'text-zinc-300');
+                    btn.classList.remove('bg-emerald-500/20', 'text-emerald-300', 'ring-1', 'ring-emerald-500/40');
+                }
+            }
+            renderAccountGrid();
+        };
+
+        window.syncAccount = async function(id) {
+            try {
+                await authFetch(API + `/accounts/${id}/sync`, { method: 'POST' });
+                alert('Синхронизация запущена — рилсы появятся через минуту');
+                setTimeout(loadAccounts, 3000);
+            } catch (e) { alert('Ошибка: ' + e.message); }
+        };
+
+        window.deleteAccount = async function(id) {
+            if (!confirm('Удалить аккаунт? (рилсы останутся, но отвяжутся)')) return;
+            await authFetch(API + `/accounts/${id}`, { method: 'DELETE' });
+            loadAccounts();
+        };
+
+        // Add account form
+        document.getElementById('btnAddAccount').addEventListener('click', () => {
+            document.getElementById('addAccountError').classList.add('hidden');
+            document.getElementById('modalAddAccount').classList.remove('hidden');
+        });
+        document.getElementById('formAddAccount').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const err = document.getElementById('addAccountError');
+            err.classList.add('hidden');
+            const username = e.target.username.value.trim().replace(/^@/, '');
+            if (!username) return;
+            const btn = e.target.querySelector('button[type=submit]');
+            btn.disabled = true; btn.textContent = 'Загружаю...';
+            try {
+                const res = await authFetch(API + '/accounts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username })
+                });
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    throw new Error(data.detail || 'Ошибка');
+                }
+                document.getElementById('modalAddAccount').classList.add('hidden');
+                e.target.reset();
+                loadAccounts();
+            } catch (ex) {
+                err.textContent = ex.message;
+                err.classList.remove('hidden');
+            } finally {
+                btn.disabled = false; btn.textContent = 'Добавить и загрузить рилсы';
+            }
+        });
 
         // ─── User Info ─────────────────────────────────────
         function updateUserUI() {
@@ -452,6 +1051,41 @@
         document.getElementById('btnLogout').addEventListener('click', logout);
         document.getElementById('btnSettings').addEventListener('click', openSettings);
         document.getElementById('btnCloseSettings').addEventListener('click', () => modalSettings.classList.add('hidden'));
+
+        // ─── Apify settings ─────────────────────────────────
+        async function loadApifyStatus() {
+            try {
+                const r = await authFetch(API + '/settings/apify');
+                if (!r.ok) return;
+                const d = await r.json();
+                const el = document.getElementById('apifyStatus');
+                if (!el) return;
+                el.textContent = d.configured ? `✓ Токен сохранён: ${d.preview}` : 'Токен не задан';
+                el.className = 'text-xs ' + (d.configured ? 'text-emerald-400' : 'text-zinc-500');
+            } catch (e) {}
+        }
+        document.getElementById('btnSaveApify').addEventListener('click', async () => {
+            const token = document.getElementById('apifyToken').value.trim();
+            if (!token) { alert('Введи токен'); return; }
+            const r = await authFetch(API + '/settings/apify', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token })
+            });
+            if (r.ok) {
+                document.getElementById('apifyToken').value = '';
+                await loadApifyStatus();
+                alert('Токен сохранён');
+            } else {
+                const d = await r.json().catch(() => ({}));
+                alert('Ошибка: ' + (d.detail || r.status));
+            }
+        });
+        document.getElementById('btnClearApify').addEventListener('click', async () => {
+            if (!confirm('Удалить сохранённый токен?')) return;
+            await authFetch(API + '/settings/apify', { method: 'DELETE' });
+            await loadApifyStatus();
+        });
         document.getElementById('btnSaveTg').addEventListener('click', saveTelegramSettings);
         document.getElementById('btnTestTg').addEventListener('click', testTelegram);
         document.getElementById('btnCloseChart').addEventListener('click', () => {
@@ -648,6 +1282,7 @@
             }
             document.getElementById('settingsMsg').classList.add('hidden');
             modalSettings.classList.remove('hidden');
+            loadApifyStatus();
         }
 
         async function saveTelegramSettings() {
@@ -735,9 +1370,14 @@
             return { hasData: true, totalViews, totalLikes, lastDiff, perHour, trackingTime, totalPoints: history.length };
         }
 
-        function drawSparkline(canvasId, data, color = '#8b5cf6') {
+        function drawSparkline(canvasId, data, color = '#8b5cf6', opts = {}) {
             const canvas = document.getElementById(canvasId);
             if (!canvas || data.length < 2) return;
+            const highlightPeaks = !!opts.highlightPeaks;
+            const tooltip = opts.tooltip !== false; // default ON
+            const labels = opts.labels || null; // array of strings (one per data point) for tooltip
+            const valueFmt = opts.valueFmt || ((v) => fmtNum(v));
+
             const ctx = canvas.getContext('2d');
             canvas.width = canvas.offsetWidth * 2;
             canvas.height = canvas.offsetHeight * 2;
@@ -745,17 +1385,113 @@
             const w = canvas.offsetWidth, h = canvas.offsetHeight;
             const max = Math.max(...data), min = Math.min(...data), range = max - min || 1;
             ctx.clearRect(0, 0, w, h);
+
+            // Линия
             ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.lineJoin = 'round';
-            data.forEach((val, i) => {
-                const x = (i / (data.length - 1)) * w;
-                const y = h - ((val - min) / range) * (h - 4) - 2;
-                i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-            });
+            const points = data.map((val, i) => ({
+                x: (i / (data.length - 1)) * w,
+                y: h - ((val - min) / range) * (h - 4) - 2,
+                val,
+            }));
+            points.forEach((p, i) => { i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y); });
             ctx.stroke();
+
+            // Заливка под линией
             const gradient = ctx.createLinearGradient(0, 0, 0, h);
             gradient.addColorStop(0, color + '20'); gradient.addColorStop(1, color + '00');
-            ctx.lineTo(w, h); ctx.lineTo(0, h); ctx.fillStyle = gradient; ctx.fill();
+            ctx.beginPath();
+            points.forEach((p, i) => { i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y); });
+            ctx.lineTo(w, h); ctx.lineTo(0, h); ctx.closePath();
+            ctx.fillStyle = gradient; ctx.fill();
+
+            // Подсветка пиков — локальные максимумы выше среднего
+            if (highlightPeaks) {
+                const avg = data.reduce((s, v) => s + v, 0) / data.length;
+                data.forEach((val, i) => {
+                    const left = i > 0 ? data[i - 1] : -Infinity;
+                    const right = i < data.length - 1 ? data[i + 1] : -Infinity;
+                    const isPeak = val >= left && val >= right && val > avg && val > 0;
+                    if (!isPeak) return;
+                    const p = points[i];
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+                    ctx.fillStyle = color;
+                    ctx.fill();
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+                    ctx.strokeStyle = color + '60';
+                    ctx.lineWidth = 1.5;
+                    ctx.stroke();
+                });
+            }
+
+            // Tooltip — единый слой на parent
+            if (tooltip) {
+                const parent = canvas.parentElement;
+                if (parent && getComputedStyle(parent).position === 'static') {
+                    parent.style.position = 'relative';
+                }
+                let tip = parent.querySelector('.spark-tip');
+                if (!tip) {
+                    tip = document.createElement('div');
+                    tip.className = 'spark-tip';
+                    tip.style.cssText = 'position:absolute;pointer-events:none;background:rgba(15,15,17,.95);color:#fff;font-size:11px;padding:5px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.08);box-shadow:0 4px 14px rgba(0,0,0,.35);transform:translate(-50%,-110%);white-space:nowrap;display:none;z-index:30;backdrop-filter:blur(6px);';
+                    parent.appendChild(tip);
+                }
+                let dot = parent.querySelector('.spark-dot');
+                if (!dot) {
+                    dot = document.createElement('div');
+                    dot.className = 'spark-dot';
+                    dot.style.cssText = 'position:absolute;pointer-events:none;width:8px;height:8px;border-radius:50%;background:' + color + ';box-shadow:0 0 0 3px ' + color + '33;transform:translate(-50%,-50%);display:none;z-index:29;';
+                    parent.appendChild(dot);
+                }
+                // обновить цвет точки (если canvas переотрисовывается с новым цветом)
+                dot.style.background = color;
+                dot.style.boxShadow = '0 0 0 3px ' + color + '33';
+
+                const offX = canvas.offsetLeft;
+                const offY = canvas.offsetTop;
+
+                canvas.onmousemove = (e) => {
+                    const rect = canvas.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    let bestI = 0, bestDist = Infinity;
+                    points.forEach((p, i) => {
+                        const d = Math.abs(p.x - x);
+                        if (d < bestDist) { bestDist = d; bestI = i; }
+                    });
+                    const p = points[bestI];
+                    const lab = labels && labels[bestI] ? labels[bestI] + '<br/>' : '';
+                    tip.innerHTML = lab + '<b>' + valueFmt(p.val) + '</b>';
+                    tip.style.left = (offX + p.x) + 'px';
+                    tip.style.top = (offY + p.y - 4) + 'px';
+                    tip.style.display = 'block';
+                    dot.style.left = (offX + p.x) + 'px';
+                    dot.style.top = (offY + p.y) + 'px';
+                    dot.style.display = 'block';
+                };
+                canvas.onmouseleave = () => {
+                    tip.style.display = 'none';
+                    dot.style.display = 'none';
+                };
+            }
         }
+
+        // Раскрытие/сворачивание caption
+        window.toggleCaption = function(btn) {
+            const wrap = btn.closest('.caption-block');
+            if (!wrap) return;
+            const expanded = wrap.getAttribute('data-expanded') === '1';
+            const full = decodeURIComponent(wrap.getAttribute('data-full') || '');
+            const short = decodeURIComponent(wrap.getAttribute('data-short') || '');
+            if (expanded) {
+                wrap.innerHTML = short + ` <button class="text-violet-400 hover:text-violet-300 text-[11px] font-medium ml-1" onclick="toggleCaption(this)">ещё</button>`;
+                wrap.setAttribute('data-expanded', '0');
+            } else {
+                wrap.innerHTML = full + ` <button class="text-violet-400 hover:text-violet-300 text-[11px] font-medium ml-1" onclick="toggleCaption(this)">свернуть</button>`;
+                wrap.setAttribute('data-expanded', '1');
+            }
+        };
 
         function platformBadge(platform) {
             const map = {
@@ -808,24 +1544,76 @@
                 const growth = calcGrowth(history);
                 const isViral = growth.hasData && growth.perHour > 500;
 
+                // Обложка: прокси через wsrv.nl чтобы обойти Referer-блокировки Instagram CDN
+                const thumbRaw = reel.thumbnail_url || '';
+                const thumbProxied = thumbRaw
+                    ? `https://wsrv.nl/?url=${encodeURIComponent(thumbRaw)}&w=160&h=160&fit=cover`
+                    : '';
+                const authorLine = reel.author_username
+                    ? `<div class="text-zinc-500 text-xs mt-0.5 truncate">@${reel.author_username}${reel.author_full_name ? ` · ${reel.author_full_name}` : ''}</div>`
+                    : '';
+
+                // Дата публикации + длительность (формат 0:42 / 1:23)
+                function _fmtDuration(sec) {
+                    if (!sec) return '';
+                    const s = Math.round(sec);
+                    const m = Math.floor(s / 60);
+                    const r = s % 60;
+                    return `${m}:${String(r).padStart(2, '0')}`;
+                }
+                function _fmtPublished(iso) {
+                    if (!iso) return '';
+                    const d = new Date(iso);
+                    if (isNaN(d)) return '';
+                    const now = new Date();
+                    const diffDays = Math.floor((now - d) / (1000 * 60 * 60 * 24));
+                    if (diffDays < 1) return 'сегодня';
+                    if (diffDays < 2) return 'вчера';
+                    if (diffDays < 30) return `${diffDays} дн. назад`;
+                    return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: diffDays > 365 ? 'numeric' : undefined });
+                }
+                const durText = _fmtDuration(reel.duration_seconds);
+                const pubText = _fmtPublished(reel.published_at);
+                const metaLine = (pubText || durText)
+                    ? `<div class="text-zinc-600 text-[11px] mt-1 flex items-center gap-2">
+                        ${pubText ? `<span class="inline-flex items-center gap-1"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>${pubText}</span>` : ''}
+                        ${durText ? `<span class="inline-flex items-center gap-1"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>${durText}</span>` : ''}
+                       </div>`
+                    : '';
+
+                // Caption: обрезка до 140 символов, с кнопкой «ещё»
+                const captionRaw = (reel.caption || '').trim();
+                const captionEscaped = captionRaw.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+                const captionShort = captionEscaped.length > 140 ? captionEscaped.slice(0, 140).trim() + '…' : captionEscaped;
+                const captionBlock = captionRaw
+                    ? `<div class="text-zinc-400 text-xs mt-3 leading-relaxed whitespace-pre-wrap caption-block" data-full="${encodeURIComponent(captionEscaped)}" data-short="${encodeURIComponent(captionShort)}" data-expanded="0">${captionShort}${captionEscaped.length > 140 ? ` <button class="text-violet-400 hover:text-violet-300 text-[11px] font-medium ml-1" onclick="toggleCaption(this)">ещё</button>` : ''}</div>`
+                    : '';
+
                 return `
                     <div class="glass rounded-2xl p-6 card-transition fade-in ${isViral ? 'viral-glow' : ''}" style="animation-delay: ${index * 0.05}s">
                         <div class="flex items-start justify-between mb-5">
                             <div class="flex items-start gap-3 flex-1 min-w-0">
-                                <div class="w-11 h-11 rounded-xl ${isViral ? 'accent-gradient' : 'bg-white/5'} flex items-center justify-center flex-shrink-0 mt-0.5">
-                                    <span class="text-lg">${isViral ? '🔥' : '📱'}</span>
+                                <div class="w-14 h-14 rounded-xl overflow-hidden flex-shrink-0 mt-0.5 relative ${thumbProxied ? 'bg-white/5' : (isViral ? 'accent-gradient' : 'bg-white/5')} flex items-center justify-center">
+                                    ${thumbProxied
+                                        ? `<img src="${thumbProxied}" alt="" class="w-full h-full object-cover" onerror="this.remove()" /><span class="text-lg absolute">${isViral ? '🔥' : '📱'}</span>`
+                                        : `<span class="text-lg">${isViral ? '🔥' : '📱'}</span>`}
+                                    ${thumbProxied && isViral ? '<div class="absolute top-0.5 right-0.5 text-xs bg-black/60 rounded-full w-5 h-5 flex items-center justify-center z-10">🔥</div>' : ''}
                                 </div>
                                 <div class="min-w-0 flex-1">
                                     <div class="flex items-center gap-2 mb-1 flex-wrap">
                                         ${platformBadge(reel.platform)}
+                                        ${reel.position_in_account ? `<span class="bg-violet-500/15 text-violet-300 text-[10px] font-bold px-2 py-0.5 rounded-md" title="Номер рилса на аккаунте (1 = самый свежий)">#${reel.position_in_account}</span>` : ''}
                                         ${isViral ? '<span class="bg-emerald-500/15 text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded-md">VIRAL</span>' : ''}
                                         ${!reel.enabled ? '<span class="bg-zinc-700/50 text-zinc-500 text-[10px] font-bold px-2 py-0.5 rounded-md">ПАУЗА</span>' : ''}
                                     </div>
                                     <h3 class="text-white font-semibold text-base truncate">${reel.title}</h3>
+                                    ${authorLine}
+                                    ${metaLine}
                                     <a href="${reel.url.startsWith('http') ? reel.url : '#'}" target="_blank" class="text-zinc-500 hover:text-violet-400 text-xs transition-colors inline-flex items-center gap-1 mt-0.5">
                                         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
                                         Открыть
                                     </a>
+                                    ${captionBlock}
                                 </div>
                             </div>
                         </div>
@@ -910,7 +1698,12 @@
                     if (sparkData.length >= 2) {
                         const growth = calcGrowth(reel.history);
                         const isViral = growth.hasData && growth.perHour > 500;
-                        drawSparkline(`spark-${reel.id}`, sparkData, isViral ? '#4ade80' : '#8b5cf6');
+                        const sparkHistory = (reel.history || []).slice(-20);
+                        drawSparkline(`spark-${reel.id}`, sparkData, isViral ? '#4ade80' : '#8b5cf6', {
+                            highlightPeaks: true,
+                            labels: sparkHistory.map(h => new Date(h.date).toLocaleString('ru-RU', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'})),
+                            valueFmt: (v) => fmtNum(v) + ' просм.',
+                        });
                     }
                 });
             });

@@ -39,6 +39,14 @@ class ReelResponse(BaseModel):
     likes: int
     comments: int
     shares: int
+    thumbnail_url: Optional[str] = None
+    author_username: Optional[str] = None
+    author_full_name: Optional[str] = None
+    published_at: Optional[datetime] = None
+    caption: Optional[str] = None
+    duration_seconds: Optional[float] = None
+    instagram_account_id: Optional[int] = None
+    position_in_account: Optional[int] = None
     last_parsed_at: Optional[datetime] = None
     created_at: datetime
     history: List[ReelHistoryResponse] = []

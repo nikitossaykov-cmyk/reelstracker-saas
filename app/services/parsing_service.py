@@ -10,7 +10,8 @@ from sqlalchemy import func
 
 from app.models.user import User
 from app.models.reel import Reel
-from app.models.parsing import ParseJob, JobStatus
+from app.models.parsing import ParseJob, JobStatus, JobType
+from app.models.account import InstagramAccount
 from app.services.tariff_service import get_parse_interval, get_priority
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,32 @@ def create_parse_job(db: Session, user: User, reel: Reel) -> ParseJob:
     db.commit()
     db.refresh(job)
     logger.info(f"✅ Создана задача #{job.id} для reel_id={reel.id}")
+    return job
+
+
+def create_account_sync_job(db: Session, user: User, account: InstagramAccount) -> ParseJob:
+    """Поставить задачу синхронизации рилсов Instagram-аккаунта"""
+    existing = db.query(ParseJob).filter(
+        ParseJob.account_id == account.id,
+        ParseJob.job_type == JobType.SYNC_ACCOUNT,
+        ParseJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING]),
+    ).first()
+    if existing:
+        logger.info(f"Sync-задача для account_id={account.id} уже в очереди (job_id={existing.id})")
+        return existing
+
+    job = ParseJob(
+        reel_id=None,
+        user_id=user.id,
+        account_id=account.id,
+        job_type=JobType.SYNC_ACCOUNT,
+        status=JobStatus.PENDING,
+        priority=get_priority(user),
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    logger.info(f"✅ Создана SYNC_ACCOUNT задача #{job.id} для account_id={account.id} (@{account.instagram_username})")
     return job
 
 

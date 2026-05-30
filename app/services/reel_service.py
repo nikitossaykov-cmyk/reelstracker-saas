@@ -12,15 +12,21 @@ from app.schemas.reel import ReelCreate, ReelUpdate
 from app.services.tariff_service import can_add_reel
 
 
-def get_user_reels(db: Session, user: User) -> List[Reel]:
-    """Получить все рилсы юзера с историей"""
-    return (
+def get_user_reels(db: Session, user: User, include_accounts: bool = False) -> List[Reel]:
+    """Получить рилсы юзера с историей.
+
+    По умолчанию — только вручную добавленные (без instagram_account_id).
+    Bulk-импорт из аккаунтов виден только во вкладке «Аккаунты».
+    Передай include_accounts=True, чтобы получить все.
+    """
+    q = (
         db.query(Reel)
         .options(joinedload(Reel.history))
         .filter(Reel.user_id == user.id)
-        .order_by(Reel.created_at.desc())
-        .all()
     )
+    if not include_accounts:
+        q = q.filter(Reel.instagram_account_id.is_(None))
+    return q.order_by(Reel.created_at.desc()).all()
 
 
 def get_reel_by_id(db: Session, reel_id: int, user: User) -> Reel:

@@ -16,12 +16,21 @@ class JobStatus(str, enum.Enum):
     FAILED = "failed"
 
 
+class JobType(str, enum.Enum):
+    PARSE_REEL = "parse_reel"         # одиночный парсинг рилса (legacy default)
+    SYNC_ACCOUNT = "sync_account"     # импорт списка рилсов с Instagram-аккаунта
+
+
 class ParseJob(Base):
     __tablename__ = "parse_jobs"
 
     id = Column(Integer, primary_key=True, index=True)
-    reel_id = Column(Integer, ForeignKey("reels.id", ondelete="CASCADE"), nullable=False)
+    # Для SYNC_ACCOUNT reel_id не нужен — делаем nullable
+    reel_id = Column(Integer, ForeignKey("reels.id", ondelete="CASCADE"), nullable=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    # Для SYNC_ACCOUNT — ссылка на аккаунт
+    account_id = Column(Integer, ForeignKey("instagram_accounts.id", ondelete="CASCADE"), nullable=True)
+    job_type = Column(Enum(JobType), default=JobType.PARSE_REEL, nullable=False)
 
     status = Column(Enum(JobStatus), default=JobStatus.PENDING, nullable=False, index=True)
     priority = Column(Integer, default=0)  # Pro=10, Free=0

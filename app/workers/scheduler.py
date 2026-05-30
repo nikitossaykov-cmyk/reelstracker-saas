@@ -12,9 +12,10 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.models.user import User
 from app.models.reel import Reel
+from app.models.account import InstagramAccount
 from app.models.parsing import ParseJob, JobStatus
 from app.services.tariff_service import get_parse_interval, get_priority
-from app.services.parsing_service import create_parse_job
+from app.services.parsing_service import create_parse_job, create_account_sync_job
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,30 @@ def schedule_user_reels(db: Session, user: User):
     return count
 
 
+def schedule_account_syncs(db: Session):
+    """Раз в час синхронизировать рилсы активных Instagram-аккаунтов
+    (Apify обновит метрики + список — это даст почасовую динамику)"""
+    cutoff = datetime.utcnow() - timedelta(hours=1)
+    accounts = db.query(InstagramAccount).filter(
+        InstagramAccount.sync_enabled == True,
+    ).all()
+
+    count = 0
+    for acc in accounts:
+        if acc.last_synced_at and acc.last_synced_at > cutoff:
+            continue  # недавно синкался
+
+        owner = db.query(User).filter(User.id == acc.user_id).first()
+        if not owner or not owner.is_active:
+            continue
+        create_account_sync_job(db, owner, acc)
+        count += 1
+
+    if count > 0:
+        logger.info(f"📦 Scheduler: поставлено {count} SYNC_ACCOUNT задач")
+    return count
+
+
 def scheduler_tick():
     """Один тик шедулера — проверяет всех активных юзеров"""
     db = SessionLocal()
@@ -80,6 +105,9 @@ def scheduler_tick():
 
         if total_scheduled > 0:
             logger.info(f"📊 Scheduler: поставлено {total_scheduled} задач суммарно")
+
+        # Ежедневные sync аккаунтов
+        schedule_account_syncs(db)
 
     except Exception as e:
         logger.error(f"Scheduler error: {e}")

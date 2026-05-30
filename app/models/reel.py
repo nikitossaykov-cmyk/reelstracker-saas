@@ -3,7 +3,7 @@
 """
 
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, UniqueConstraint, Index
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, UniqueConstraint, Index, Text, Float
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -24,6 +24,18 @@ class Reel(Base):
     comments = Column(Integer, default=0)
     shares = Column(Integer, default=0)
 
+    # Метаданные рилса (заполняются парсером при первом успешном парсинге)
+    thumbnail_url = Column(String(1024), nullable=True)
+    author_username = Column(String(255), nullable=True)
+    author_full_name = Column(String(255), nullable=True)
+    published_at = Column(DateTime, nullable=True)   # когда рилс опубликован в Instagram
+    caption = Column(Text, nullable=True)            # подпись
+    duration_seconds = Column(Float, nullable=True)  # длительность видео
+
+    # Bulk-импорт из аккаунта (опционально)
+    instagram_account_id = Column(Integer, ForeignKey("instagram_accounts.id", ondelete="SET NULL"), nullable=True, index=True)
+    position_in_account = Column(Integer, nullable=True)  # 1 = самый свежий рилс на аккаунте
+
     last_parsed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
@@ -32,6 +44,7 @@ class Reel(Base):
     history = relationship("ReelHistory", back_populates="reel", cascade="all, delete-orphan",
                            order_by="ReelHistory.parsed_at.asc()")
     parse_jobs = relationship("ParseJob", back_populates="reel", cascade="all, delete-orphan")
+    account = relationship("InstagramAccount", back_populates="reels")
 
     # Один URL на юзера
     __table_args__ = (

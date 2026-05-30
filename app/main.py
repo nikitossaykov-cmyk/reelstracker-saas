@@ -23,6 +23,86 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
+def reattach_orphan_reels():
+    """
+    Спасти рилсы, которых предыдущая версия открепила (instagram_account_id=NULL),
+    но которые на самом деле принадлежат аккаунту юзера: ищем по author_username
+    совпадение с InstagramAccount.instagram_username и возвращаем привязку.
+    Идемпотентно — безопасно вызывать каждый старт.
+    """
+    from app.database import SessionLocal
+    from app.models.reel import Reel
+    from app.models.account import InstagramAccount
+
+    db = SessionLocal()
+    try:
+        orphans = db.query(Reel).filter(
+            Reel.instagram_account_id.is_(None),
+            Reel.author_username.isnot(None),
+            Reel.platform == 'instagram',
+        ).all()
+        if not orphans:
+            return
+        # username → account, для быстрого поиска
+        accs = db.query(InstagramAccount).all()
+        by_user = {}
+        for a in accs:
+            by_user.setdefault((a.user_id, (a.instagram_username or '').lower()), a)
+
+        reattached = 0
+        for r in orphans:
+            key = (r.user_id, (r.author_username or '').lower())
+            acc = by_user.get(key)
+            if acc:
+                r.instagram_account_id = acc.id
+                # position_in_account оставляем NULL — назначится при следующем sync'е
+                reattached += 1
+        if reattached:
+            db.commit()
+            logger.info(f"🔄 Восстановлена привязка {reattached} рилсов к их аккаунтам")
+    except Exception as e:
+        logger.warning(f"reattach_orphan_reels: {e}")
+    finally:
+        db.close()
+
+
+def cleanup_duplicate_reels():
+    """
+    Одноразовая чистка дубликатных позиций: если в одном instagram_account_id
+    несколько Reel имеют одинаковый position_in_account, оставляем у самого старого,
+    остальным ставим NULL (попадут в конец списка). instagram_account_id НЕ трогаем,
+    рилсы остаются в аккаунте.
+    """
+    from app.database import SessionLocal
+    from app.models.reel import Reel
+    from sqlalchemy import func
+
+    db = SessionLocal()
+    try:
+        position_clashes = 0
+        accs_with_dupes = db.query(Reel.instagram_account_id, Reel.position_in_account, func.count('*').label('cnt'))\
+            .filter(Reel.instagram_account_id.isnot(None), Reel.position_in_account.isnot(None))\
+            .group_by(Reel.instagram_account_id, Reel.position_in_account)\
+            .having(func.count('*') > 1)\
+            .all()
+        for acc_id, pos, cnt in accs_with_dupes:
+            dupes = db.query(Reel).filter(
+                Reel.instagram_account_id == acc_id,
+                Reel.position_in_account == pos,
+            ).order_by(Reel.id.asc()).all()
+            for r in dupes[1:]:
+                r.position_in_account = None
+                position_clashes += 1
+
+        if position_clashes:
+            db.commit()
+            logger.info(f"🧹 Чистка дубликатных позиций: {position_clashes} записей получили NULL-позицию")
+    except Exception as e:
+        logger.warning(f"cleanup_duplicate_reels: {e}")
+    finally:
+        db.close()
+
+
 def reset_stuck_jobs():
     """Сброс зависших задач (RUNNING без завершения)"""
     from app.database import SessionLocal
@@ -52,6 +132,38 @@ def reset_stuck_jobs():
         db.close()
 
 
+def run_lightweight_migrations():
+    """Idempotent миграции — добавляем новые колонки к существующим таблицам.
+    Альтернатива alembic для мелких изменений, безопасно на уже-живой БД."""
+    from sqlalchemy import text
+    migrations = [
+        "ALTER TABLE reels ADD COLUMN IF NOT EXISTS thumbnail_url VARCHAR(1024)",
+        "ALTER TABLE reels ADD COLUMN IF NOT EXISTS author_username VARCHAR(255)",
+        "ALTER TABLE reels ADD COLUMN IF NOT EXISTS author_full_name VARCHAR(255)",
+        "ALTER TABLE reels ADD COLUMN IF NOT EXISTS published_at TIMESTAMP",
+        "ALTER TABLE reels ADD COLUMN IF NOT EXISTS caption TEXT",
+        "ALTER TABLE reels ADD COLUMN IF NOT EXISTS duration_seconds DOUBLE PRECISION",
+        "ALTER TABLE reels ADD COLUMN IF NOT EXISTS instagram_account_id INTEGER",
+        "ALTER TABLE reels ADD COLUMN IF NOT EXISTS position_in_account INTEGER",
+        "CREATE INDEX IF NOT EXISTS ix_reels_instagram_account_id ON reels(instagram_account_id)",
+        # parse_jobs: sync-задачи не привязаны к одному рилсу
+        "ALTER TABLE parse_jobs ALTER COLUMN reel_id DROP NOT NULL",
+        "ALTER TABLE parse_jobs ADD COLUMN IF NOT EXISTS account_id INTEGER",
+        "DO $$ BEGIN CREATE TYPE jobtype AS ENUM ('PARSE_REEL','SYNC_ACCOUNT'); EXCEPTION WHEN duplicate_object THEN NULL; END $$",
+        "ALTER TABLE parse_jobs ADD COLUMN IF NOT EXISTS job_type jobtype",
+        "UPDATE parse_jobs SET job_type = 'PARSE_REEL' WHERE job_type IS NULL",
+        # users: Apify token
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS apify_token VARCHAR(255)",
+    ]
+    with engine.connect() as conn:
+        for sql in migrations:
+            try:
+                conn.execute(text(sql))
+                conn.commit()
+            except Exception as e:
+                logger.warning(f"Миграция '{sql[:60]}...' не прошла: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup / shutdown events"""
@@ -61,8 +173,18 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     logger.info("✅ Таблицы БД готовы")
 
+    # Лёгкие миграции для новых колонок
+    run_lightweight_migrations()
+    logger.info("✅ Миграции колонок выполнены")
+
     # Сброс зависших задач от предыдущего запуска
     reset_stuck_jobs()
+
+    # Спасаем рилсы, которых предыдущая версия открепила
+    reattach_orphan_reels()
+
+    # Одноразовая чистка дубликатных позиций (instagram_account_id не трогаем)
+    cleanup_duplicate_reels()
 
     # Запуск фонового парсера и шедулера
     from app.workers.scheduler import start_scheduler_thread, start_worker_thread
@@ -99,6 +221,8 @@ from app.api.dashboard import router as dashboard_router
 from app.api.telegram import router as telegram_router
 from app.api.tariff import router as tariff_router
 from app.api.parsing import router as parsing_router
+from app.api.accounts import router as accounts_router
+from app.api.settings_apify import router as apify_router
 
 app.include_router(auth_router, prefix="/api/auth", tags=["Auth"])
 app.include_router(reels_router, prefix="/api/reels", tags=["Reels"])
@@ -106,6 +230,8 @@ app.include_router(dashboard_router, prefix="/api/dashboard", tags=["Dashboard"]
 app.include_router(telegram_router, prefix="/api/settings/telegram", tags=["Telegram"])
 app.include_router(tariff_router, prefix="/api/tariff", tags=["Tariff"])
 app.include_router(parsing_router, prefix="/api/parse", tags=["Parsing"])
+app.include_router(accounts_router, prefix="/api/accounts", tags=["Accounts"])
+app.include_router(apify_router, prefix="/api/settings/apify", tags=["Apify"])
 
 # ─── Static Files ──────────────────────────────────────────
 

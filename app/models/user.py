@@ -37,6 +37,9 @@ class User(Base):
     telegram_threshold_likes = Column(Integer, default=500)
     telegram_threshold_comments = Column(Integer, default=100)
 
+    # Apify API token (для импорта рилсов с аккаунтов через Apify actor)
+    apify_token = Column(String(255), nullable=True)
+
     # Relationships
     reels = relationship("Reel", back_populates="user", cascade="all, delete-orphan")
     parse_jobs = relationship("ParseJob", back_populates="user", cascade="all, delete-orphan")

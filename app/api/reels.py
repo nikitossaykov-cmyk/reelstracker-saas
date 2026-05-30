@@ -25,11 +25,12 @@ router = APIRouter()
 
 @router.get("", response_model=List[ReelResponse])
 def list_reels(
+    include_accounts: bool = Query(False, description="Включать рилсы, импортированные через аккаунты"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Список всех рилсов текущего юзера"""
-    return get_user_reels(db, current_user)
+    """Список рилсов юзера. По умолчанию — только вручную добавленные."""
+    return get_user_reels(db, current_user, include_accounts=include_accounts)
 
 
 @router.post("", response_model=ReelResponse, status_code=status.HTTP_201_CREATED)

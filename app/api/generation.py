@@ -2,7 +2,8 @@
 API для генерации видео: POST /api/generation, GET список + детальная.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, status, Query, File, UploadFile, Form
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -80,6 +81,58 @@ def get_generation(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Generation #{generation_id} не найдена",
         )
+    return gv
+
+
+@router.post("/{generation_id}/face-swap", response_model=GeneratedVideoResponse)
+async def face_swap_generation(
+    generation_id: int,
+    face_image: "UploadFile" = None,
+    face_image_url: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Подменить лицо в сгенерированном видео через MSI ComfyUI ReActor.
+
+    Бесплатно (RTX 3070 на ноуте через Tailscale). Альтернатива Runway/Veo
+    когда нужно ТОЛЬКО поменять лицо в готовом видео (не пересоздавать его).
+
+    Body: либо multipart с file 'face_image', либо JSON {face_image_url}.
+    Результат пишется в uniq_storage_key (поскольку это та же сущность —
+    модифицированная копия media). Оригинал остаётся в media_storage_key.
+    """
+    from fastapi import UploadFile
+    from pathlib import Path
+    import tempfile
+    gv = get_generation_by_id(db, generation_id, current_user)
+    if gv is None:
+        raise HTTPException(404, detail=f"Generation #{generation_id} не найдена")
+    if not gv.media_storage_key:
+        raise HTTPException(400, detail="Видео ещё не сгенерировано")
+
+    # Сохранить face в /tmp
+    workdir = Path(tempfile.mkdtemp(prefix=f"face_in_{gv.id}_"))
+    face_path = workdir / "face.jpg"
+    if face_image:
+        data = await face_image.read()
+        face_path.write_bytes(data)
+    elif face_image_url:
+        import requests
+        r = requests.get(face_image_url, timeout=60)
+        r.raise_for_status()
+        face_path.write_bytes(r.content)
+    else:
+        raise HTTPException(400, detail="Нужно либо face_image (multipart), либо face_image_url")
+
+    from app.services.msi_face_swap_service import face_swap_via_msi, MSINotReachable, ComfyWorkflowError
+    try:
+        face_swap_via_msi(db, gv, face_path)
+    except MSINotReachable as e:
+        raise HTTPException(503, detail=f"MSI ComfyUI недоступен: {e}")
+    except ComfyWorkflowError as e:
+        raise HTTPException(500, detail=f"MSI workflow упал: {e}")
+
+    db.refresh(gv)
     return gv
 
 

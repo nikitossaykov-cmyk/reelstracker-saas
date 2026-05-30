@@ -376,7 +376,8 @@ def process_one_job(db: Session) -> bool:
     if job.job_type == JobType.ANALYZE_REEL:
         from app.workers.analyzer_worker import process_analyze_reel_job
         return process_analyze_reel_job(db, job)
-    if job.job_type == JobType.POST_TO_INSTAGRAM:
+    if job.job_type in (JobType.POST_TO_INSTAGRAM, JobType.POST_TO_TIKTOK,
+                        JobType.POST_TO_VK, JobType.POST_TO_YOUTUBE):
         from app.workers.posting_worker import process_post_to_instagram_job
         return process_post_to_instagram_job(db, job)
     # OAUTH_REFRESH / REMAKE_VIDEO — приходят в следующих PR;

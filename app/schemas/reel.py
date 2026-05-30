@@ -49,6 +49,27 @@ class ReelResponse(BaseModel):
     position_in_account: Optional[int] = None
     last_parsed_at: Optional[datetime] = None
     created_at: datetime
+    # Content Forge — кэш медиа
+    media_storage_key: Optional[str] = None
+    media_size_bytes: Optional[int] = None
+    media_downloaded_at: Optional[datetime] = None
+    media_download_error: Optional[str] = None
     history: List[ReelHistoryResponse] = []
 
     model_config = {"from_attributes": True}
+
+
+class ReelMediaUrlResponse(BaseModel):
+    """Ответ /api/reels/{id}/media-url — presigned R2 URL."""
+    media_url: Optional[str]
+    storage_key: Optional[str]
+    size_bytes: Optional[int]
+    downloaded_at: Optional[datetime]
+
+
+class ReelDownloadResponse(BaseModel):
+    """Ответ POST /api/reels/{id}/download — статус ручного скачивания."""
+    ok: bool
+    storage_key: Optional[str] = None
+    size_bytes: Optional[int] = None
+    error: Optional[str] = None

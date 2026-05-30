@@ -12,7 +12,7 @@ from app.api.deps import get_current_user
 from app.models.user import User
 from app.models.account import InstagramAccount
 from app.models.reel import Reel
-from app.schemas.account import AccountCreate, AccountResponse
+from app.schemas.account import AccountCreate, AccountResponse, AccountUpdate
 from app.schemas.reel import ReelResponse
 
 router = APIRouter()
@@ -32,6 +32,7 @@ def _serialize_account(acc: InstagramAccount, reels_count: int = 0) -> dict:
         "sync_enabled": acc.sync_enabled,
         "last_synced_at": acc.last_synced_at,
         "last_sync_error": acc.last_sync_error,
+        "auto_download_media": acc.auto_download_media,
         "reels_count": reels_count,
         "created_at": acc.created_at,
     }
@@ -155,6 +156,30 @@ def sync_account(
     from app.services.parsing_service import create_account_sync_job
     create_account_sync_job(db, current_user, acc)
     return {"status": "queued", "account_id": account_id}
+
+
+@router.patch("/{account_id}", response_model=AccountResponse)
+def update_account(
+    account_id: int,
+    data: AccountUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Обновить флаги аккаунта (`sync_enabled`, `auto_download_media`)."""
+    acc = db.query(InstagramAccount).filter(
+        InstagramAccount.id == account_id,
+        InstagramAccount.user_id == current_user.id,
+    ).first()
+    if not acc:
+        raise HTTPException(404, detail="Аккаунт не найден")
+    if data.sync_enabled is not None:
+        acc.sync_enabled = data.sync_enabled
+    if data.auto_download_media is not None:
+        acc.auto_download_media = data.auto_download_media
+    db.commit()
+    db.refresh(acc)
+    count = db.query(Reel).filter(Reel.instagram_account_id == acc.id).count()
+    return _serialize_account(acc, count)
 
 
 @router.delete("/{account_id}", status_code=status.HTTP_204_NO_CONTENT)

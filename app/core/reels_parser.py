@@ -1118,6 +1118,9 @@ class ReelsParser:
                     'comments': int(it.get('commentsCount') or 0),
                     'published_at': pub_iso,
                     'duration_seconds': float(it.get('videoDuration')) if it.get('videoDuration') else None,
+                    # Прямая ссылка .mp4 на IG-CDN. Протухает за часы — если хотим
+                    # скачать в наш R2, дёргаем сразу при sync (см. media_service).
+                    'video_url': it.get('videoUrl') or it.get('video_url'),
                 })
             logger.info(f"Apify: отфильтровано {len(results)} рилсов")
             return results

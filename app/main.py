@@ -163,6 +163,17 @@ def run_lightweight_migrations():
         "ALTER TABLE parse_jobs ADD COLUMN IF NOT EXISTS generated_video_id INTEGER",
         "ALTER TABLE parse_jobs ADD COLUMN IF NOT EXISTS post_id INTEGER",
         "ALTER TABLE parse_jobs ADD COLUMN IF NOT EXISTS posting_target_id INTEGER",
+        # Content Forge — медиа-кэш рилсов в R2 для ремейка/анализа.
+        "ALTER TABLE reels ADD COLUMN IF NOT EXISTS media_storage_key VARCHAR(512)",
+        "ALTER TABLE reels ADD COLUMN IF NOT EXISTS media_size_bytes BIGINT",
+        "ALTER TABLE reels ADD COLUMN IF NOT EXISTS media_downloaded_at TIMESTAMP",
+        "ALTER TABLE reels ADD COLUMN IF NOT EXISTS media_source_url TEXT",
+        "ALTER TABLE reels ADD COLUMN IF NOT EXISTS media_download_error TEXT",
+        "CREATE INDEX IF NOT EXISTS ix_reels_media_downloaded "
+        "ON reels(media_downloaded_at) WHERE media_storage_key IS NOT NULL",
+        # InstagramAccount — флаг auto-download для target-аккаунтов.
+        "ALTER TABLE instagram_accounts ADD COLUMN IF NOT EXISTS "
+        "auto_download_media BOOLEAN NOT NULL DEFAULT FALSE",
     ]
     # Enum-расширения нужно делать в AUTOCOMMIT (Postgres не разрешает
     # ALTER TYPE ... ADD VALUE внутри транзакции).

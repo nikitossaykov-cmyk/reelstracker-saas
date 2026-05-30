@@ -308,6 +308,21 @@ def _process_sync_account_job(db: Session, job) -> bool:
                 new_reel.last_parsed_at = datetime.utcnow()
                 created += 1
 
+            # Content Forge — если аккаунт помечен для авто-скачивания, забираем
+            # MP4 в наш R2 (IG-CDN URL протухает за часы, надо сразу). Делаем
+            # после commit-а по reel-у, чтобы было reel.id.
+            try:
+                if acc.auto_download_media and item.get('video_url'):
+                    target = existing or new_reel
+                    if target and target.id and not target.media_storage_key:
+                        from app.services.media_service import download_reel_media
+                        # commit чтобы выдать reel.id для нового, и чтобы при
+                        # ошибке download реальные изменения reel'а сохранились
+                        db.commit()
+                        download_reel_media(db, target, item['video_url'])
+            except Exception as e:
+                logger.warning(f"auto-download для reel {sc} упал: {e}")
+
         # Рилсы, которым не назначилась новая позиция (не нашлись в свежем Apify-ответе),
         # ОСТАВЛЯЕМ привязанными к аккаунту, но с position_in_account = NULL —
         # они отсортируются в конец списка через nullslast(). Так не теряем рилсы.

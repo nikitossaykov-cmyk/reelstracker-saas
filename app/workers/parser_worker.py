@@ -344,10 +344,18 @@ def process_one_job(db: Session) -> bool:
     if not job:
         return False
 
-    # Для SYNC_ACCOUNT делегируем отдельной функции
+    # Диспатчер по типу job-а.
     from app.models.parsing import JobType
     if job.job_type == JobType.SYNC_ACCOUNT:
         return _process_sync_account_job(db, job)
+    if job.job_type == JobType.GENERATE_VIDEO:
+        from app.workers.generation_worker import process_generate_video_job
+        return process_generate_video_job(db, job)
+    # POST_TO_INSTAGRAM / OAUTH_REFRESH — приходят в следующих PR; пока
+    # помечаем как failed, чтобы не зависали в RUNNING.
+    if job.job_type in (JobType.POST_TO_INSTAGRAM, JobType.OAUTH_REFRESH):
+        fail_job(db, job, f"job_type {job.job_type.value} ещё не имплементирован")
+        return True
 
     logger.info(f"🔄 Обрабатываю задачу #{job.id}: reel_id={job.reel_id}")
 

@@ -70,6 +70,12 @@ class GeneratedVideo(Base):
     width = Column(Integer, nullable=True)
     height = Column(Integer, nullable=True)
 
+    # PR #8 — Uniqualizer: отдельная копия с применённым anti-fingerprint
+    # пресетом. Если uniq не делали — оба null.
+    uniq_media_url = Column(String(1024), nullable=True)
+    uniq_storage_key = Column(String(512), nullable=True)
+    uniqified_at = Column(DateTime, nullable=True)
+
     error_message = Column(Text, nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

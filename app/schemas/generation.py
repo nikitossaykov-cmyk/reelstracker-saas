@@ -39,6 +39,13 @@ class GeneratedVideoResponse(BaseModel):
     created_at: datetime
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+    # Uniqualizer copy
+    uniq_media_url: Optional[str] = None
+    uniq_storage_key: Optional[str] = None
+    uniqified_at: Optional[datetime] = None
+    # Forge linkage
+    source_reel_id: Optional[int] = None
+    source_recipe_id: Optional[int] = None
 
     model_config = {"from_attributes": True}
 

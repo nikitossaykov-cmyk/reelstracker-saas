@@ -292,14 +292,57 @@ function showResult(s) {
   document.getElementById('result-video').src = url;
   document.getElementById('result-download').href = url;
   document.getElementById('result-download').download = `forge-${currentGvId}.mp4`;
-  document.getElementById('result-details').innerHTML = `
+  // Cost summary up top
+  let costStr = '';
+  if (s.detail.cost_usd) {
+    const cb = s.detail.cost_breakdown || {};
+    costStr = `<div class="mb-3 p-2 bg-purple-900/20 rounded text-sm">
+      <strong>💰 Стоимость: ${s.detail.cost_usd}</strong>
+      <div class="text-xs text-gray-400 mt-1">
+        Анализ ~$${((cb.analyzer_whisper_vision || 0) / 100).toFixed(3)} +
+        классификатор сцен ~$${((cb.scene_classifier || 0) / 100).toFixed(3)} +
+        рецепт ~$${((cb.recipe_extractor || 0) / 100).toFixed(3)} +
+        генерация ${(cb.chunks_detail || []).length}× Runway ~$${((cb.runway_chunks || 0) / 100).toFixed(2)}
+      </div></div>`;
+  }
+  // Segments breakdown
+  let segStr = '';
+  if (s.detail.hybrid_segments && s.detail.hybrid_segments.length) {
+    const counts = {};
+    s.detail.hybrid_segments.forEach(seg => {
+      counts[seg.strategy] = (counts[seg.strategy] || 0) + 1;
+    });
+    const label = {
+      regenerate: '🎬 сгенерировано', keep_original: '📋 из оригинала',
+      text_template: '📝 текстовая карточка',
+      keep_original_fallback: '📋 fallback из оригинала',
+      keep_original_pending_image_edit: '📋 (ждёт image edit)',
+      fallback_keep_original: '📋 fallback из оригинала',
+    };
+    segStr = `<div class="mb-3 text-sm">
+      <strong>🧩 ${s.detail.hybrid_segments.length} сегментов:</strong>
+      ${Object.entries(counts).map(([k, v]) => `<span class="ml-2 px-2 py-0.5 bg-white/5 rounded text-xs">${v}× ${label[k] || k}</span>`).join('')}
+    </div>`;
+  }
+  document.getElementById('result-details').innerHTML = costStr + segStr + `
     <div><strong>Source:</strong> ${(s.source_title || '').slice(0, 80)}<br><a href="${s.source_url}" target="_blank" class="text-blue-400 hover:underline text-xs">${s.source_url}</a></div>
     <div><strong>Hook:</strong> ${s.detail.hook_type || '—'}</div>
     <div><strong>Recipe:</strong> #${s.detail.recipe_id || '—'} «${s.detail.recipe_name || ''}»</div>
     <div><strong>Generation:</strong> #${s.detail.generation_id} (${s.detail.generation_status})</div>
-    <div><strong>R2 origin URL:</strong> <a href="${s.detail.media_url}" target="_blank" class="text-blue-400 hover:underline text-xs">оригинал</a> ${s.detail.uniq_media_url ? `· <a href="${s.detail.uniq_media_url}" target="_blank" class="text-green-400 hover:underline text-xs">uniq</a>` : ''}</div>
+    <div><strong>R2 URL:</strong> <a href="${s.detail.media_url}" target="_blank" class="text-blue-400 hover:underline text-xs">оригинал</a> ${s.detail.uniq_media_url ? `· <a href="${s.detail.uniq_media_url}" target="_blank" class="text-green-400 hover:underline text-xs">uniq</a>` : ''}</div>
   `;
-  document.getElementById('result-section').classList.remove('hidden');
+  // Move cost+seg up into main result area (not just details)
+  const resultSection = document.getElementById('result-section');
+  // Insert cost+segments BEFORE the buttons row
+  const oldBanner = document.getElementById('result-banner');
+  if (oldBanner) oldBanner.remove();
+  if (costStr || segStr) {
+    const banner = document.createElement('div');
+    banner.id = 'result-banner';
+    banner.innerHTML = costStr + segStr;
+    resultSection.querySelector('video').after(banner);
+  }
+  resultSection.classList.remove('hidden');
 }
 
 async function uniqResult() {

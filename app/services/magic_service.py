@@ -312,6 +312,15 @@ def magic_status(db: Session, user: User, reel_id: int) -> dict:
         stage = "generating"
         detail["generation_id"] = gv.id
         detail["generation_status"] = gv.status.value
+        # PR #23 — cost surface
+        if gv.cost_kopecks is not None:
+            from app.core.cost_calculator import format_cost_usd
+            detail["cost_cents"] = gv.cost_kopecks
+            detail["cost_usd"] = format_cost_usd(gv.cost_kopecks)
+        if gv.provider_params and "cost_breakdown" in gv.provider_params:
+            detail["cost_breakdown"] = gv.provider_params["cost_breakdown"]
+        if gv.provider_params and "hybrid_segments" in gv.provider_params:
+            detail["hybrid_segments"] = gv.provider_params["hybrid_segments"]
         if gv.status == GenerationStatus.READY:
             stage = "ready"
             detail["media_url"] = gv.media_url

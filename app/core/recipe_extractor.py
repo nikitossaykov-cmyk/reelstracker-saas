@@ -92,7 +92,7 @@ Output STRICT JSON only — no markdown fences, no commentary. Schema:
     "placement_sec": "when and where the CTA happens — be specific",
     "exact_text": "EXACT words of the CTA if any"
   },
-  "canonical_prompt": "ONE LONG PARAGRAPH (~500-800 words) that recreates this video as faithfully as possible. Write it as a Veo/Runway prompt. Include EVERY detail above. Use [BRAND] and [PRODUCT] as substitution tokens for the brand/product (so the user can swap them). KEEP everything else (composition, text overlays — in source language, character description, lighting, style) intact."
+  "canonical_prompt": "ONE PARAGRAPH (STRICTLY ≤900 chars — Runway promptText limit is 1000). Recreate this video as faithfully as possible. Write as Veo/Runway prompt. Pack the most-load-bearing detail: opening shot composition, character physical, key text overlay verbatim, product, lighting, mood. Use [BRAND] and [PRODUCT] as substitution tokens. Aggressive compression — every word must earn its place."
 }
 
 If a field is unknown, use null. Goal: a downstream AI should be able to

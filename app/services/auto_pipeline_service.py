@@ -234,6 +234,7 @@ def _extract_recipe_and_remake(
         outfit_description=p.get("outfit_description"),
         palette=p.get("palette"),
         extra_instructions=p.get("extra_instructions"),
+        init_image_url=p.get("init_image_url"),  # PR #20: image-to-video seed
     )
     try:
         from app.services.remake_service import create_remake_job

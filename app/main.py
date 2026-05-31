@@ -297,6 +297,7 @@ from app.api.remakes import router as remakes_router
 from app.api.posting_targets import router as posting_targets_router
 from app.api.posts import router as posts_router
 from app.api.voice import router as voice_router
+from app.api.magic import router as magic_router
 
 app.include_router(auth_router, prefix="/api/auth", tags=["Auth"])
 app.include_router(reels_router, prefix="/api/reels", tags=["Reels"])
@@ -312,6 +313,7 @@ app.include_router(remakes_router, prefix="/api/remakes", tags=["Remakes"])
 app.include_router(posting_targets_router, prefix="/api/posting-targets", tags=["PostingTargets"])
 app.include_router(posts_router, prefix="/api/posts", tags=["Posts"])
 app.include_router(voice_router, prefix="/api/voice", tags=["Voice"])
+app.include_router(magic_router, prefix="/api/magic", tags=["Magic"])
 
 # ─── Static Files ──────────────────────────────────────────
 
@@ -342,6 +344,11 @@ async def forge_page_redirect():
 @app.get("/forge.html")
 async def forge_page():
     return FileResponse("static/forge.html")
+
+
+@app.get("/forge-advanced.html")
+async def forge_advanced_page():
+    return FileResponse("static/forge-advanced.html")
 
 
 @app.get("/health")

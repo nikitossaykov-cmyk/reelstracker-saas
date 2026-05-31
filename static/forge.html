@@ -123,10 +123,46 @@
 </div>
 
 <script>
-const ACCESS = localStorage.getItem('access_token');
+let ACCESS = localStorage.getItem('access_token');
 if (!ACCESS) { location.href = '/login.html'; }
-const HDR = { 'Authorization': 'Bearer ' + ACCESS };
-const HDR_JSON = { ...HDR, 'Content-Type': 'application/json' };
+function hdr() { return { 'Authorization': 'Bearer ' + ACCESS }; }
+function hdrJson() { return { ...hdr(), 'Content-Type': 'application/json' }; }
+
+// Refresh access_token using stored refresh_token. Returns true if got new token.
+async function tryRefresh() {
+  const rt = localStorage.getItem('refresh_token');
+  if (!rt) return false;
+  try {
+    const r = await fetch('/api/auth/refresh', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: rt }),
+    });
+    if (!r.ok) return false;
+    const d = await r.json();
+    if (d.access_token) {
+      ACCESS = d.access_token;
+      localStorage.setItem('access_token', d.access_token);
+      if (d.refresh_token) localStorage.setItem('refresh_token', d.refresh_token);
+      return true;
+    }
+  } catch (e) { console.error('refresh', e); }
+  return false;
+}
+
+// Wrap fetch — on 401 try refresh once + retry. If still fails, logout.
+async function authFetch(url, opts = {}) {
+  opts.headers = { ...(opts.headers || {}), ...hdr() };
+  let r = await fetch(url, opts);
+  if (r.status === 401) {
+    if (await tryRefresh()) {
+      opts.headers = { ...(opts.headers || {}), ...hdr() };
+      r = await fetch(url, opts);
+    } else {
+      localStorage.clear(); location.href = '/login.html';
+    }
+  }
+  return r;
+}
 
 document.getElementById('logout-btn').onclick = () => { localStorage.clear(); location.href = '/login.html'; };
 
@@ -177,10 +213,10 @@ async function startMagic() {
       fd.append('video', uploadedFile);
       const p = getParams();
       for (const [k, v] of Object.entries(p)) if (v) fd.append(k, v);
-      resp = await fetch('/api/magic/from-upload', { method: 'POST', headers: HDR, body: fd });
+      resp = await authFetch('/api/magic/from-upload', { method: 'POST', body: fd });
     } else {
       const body = { source_url: url, ...getParams() };
-      resp = await fetch('/api/magic/from-url', { method: 'POST', headers: HDR_JSON, body: JSON.stringify(body) });
+      resp = await authFetch('/api/magic/from-url', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     }
     if (!resp.ok) {
       const e = await resp.text();
@@ -228,7 +264,7 @@ function setStageActive(name) {
 async function pollStatus() {
   if (!currentReelId) return;
   try {
-    const r = await fetch(`/api/magic/${currentReelId}/status`, { headers: HDR });
+    const r = await authFetch(`/api/magic/${currentReelId}/status`);
     if (!r.ok) return;
     const s = await r.json();
     if (s.status === 'failed') {
@@ -270,7 +306,7 @@ async function uniqResult() {
   if (!currentGvId) return;
   const btn = document.getElementById('uniq-btn');
   btn.textContent = '⏳ Uniqify...'; btn.disabled = true;
-  const r = await fetch(`/api/generation/${currentGvId}/uniqify`, { method: 'POST', headers: HDR });
+  const r = await authFetch(`/api/generation/${currentGvId}/uniqify`, { method: 'POST' });
   if (r.ok) {
     const g = await r.json();
     document.getElementById('result-video').src = g.uniq_media_url;
@@ -283,7 +319,7 @@ async function uniqResult() {
 
 function copySourcePrompt() {
   if (!currentGvId) return;
-  fetch(`/api/generation/${currentGvId}`, { headers: HDR })
+  authFetch(`/api/generation/${currentGvId}`)
     .then(r => r.json())
     .then(g => { navigator.clipboard.writeText(g.prompt || ''); alert('✅ Скопирован'); });
 }
@@ -305,7 +341,7 @@ function reset() {
 function cancelMagic() { reset(); }
 
 async function loadRecent() {
-  const r = await fetch('/api/generation?limit=10', { headers: HDR });
+  const r = await authFetch('/api/generation?limit=10');
   if (!r.ok) return;
   const { items } = await r.json();
   const div = document.getElementById('recent-jobs');

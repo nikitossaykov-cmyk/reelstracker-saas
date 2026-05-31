@@ -36,6 +36,7 @@ def create_remake_job(
     aspect_ratio: str = "9:16",
     duration_seconds: int = 5,
     model: Optional[str] = None,
+    use_hybrid: bool = False,
 ) -> GeneratedVideo:
     """Создать GeneratedVideo с подменёнными плейсхолдерами + поставить в очередь.
 
@@ -102,11 +103,12 @@ def create_remake_job(
     db.add(gv)
     db.flush()
 
+    job_type_to_use = JobType.REMAKE_VIDEO if use_hybrid else JobType.GENERATE_VIDEO
     job = ParseJob(
         reel_id=None,
         user_id=user.id,
         generated_video_id=gv.id,
-        job_type=JobType.GENERATE_VIDEO,  # reuse existing generation pipeline
+        job_type=job_type_to_use,
         status=JobStatus.PENDING,
         priority=get_priority(user),
     )

@@ -254,47 +254,107 @@ def execute_hybrid_remake(
     src_dur = _ffprobe_duration(src)
     logger.info(f"hybrid remake gv #{gv.id}: source {src_dur:.1f}s, {len(scenes)} scenes")
 
-    segments: list[Path] = []
-    segments_meta: list[dict] = []
+    # PR #22 — параллелим Runway-вызовы для regenerate-сегментов
+    # ThreadPoolExecutor wall-clock: 6-9 мин serial → 2-3 мин parallel
+    # (Runway concurrent limit на gen4.5 = 1 у tier free, у paid выше;
+    # тут ограничиваем 4 чтобы не упереться в throttle).
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    segments: list[Optional[Path]] = [None] * len(scenes)
+    segments_meta: list[Optional[dict]] = [None] * len(scenes)
+    runway_jobs: dict = {}  # future → (idx, scene, seg_out)
+
+    def _do_local(i: int, scene: dict, seg_out: Path) -> tuple[int, str, float]:
+        """Локальные ffmpeg-стратегии (keep_original, text_template) — быстрые."""
+        strategy = scene.get("strategy", "regenerate")
+        t0 = time.time()
+        if strategy == "keep_original":
+            _cut_segment(src, scene["start"], scene["duration"], seg_out)
+        elif strategy == "text_template":
+            _text_card_video(scene.get("visible_text") or "Magic Forge",
+                             scene["duration"], seg_out)
+        elif strategy == "image_edit_overlay":
+            _cut_segment(src, scene["start"], scene["duration"], seg_out)
+            strategy = "keep_original_pending_image_edit"
+        else:
+            _cut_segment(src, scene["start"], scene["duration"], seg_out)
+            strategy = "fallback_keep_original"
+        return i, strategy, time.time() - t0
+
     try:
+        # Шаг 1: ffmpeg-сегменты СРАЗУ (быстро), Runway-сегменты собираем для thread pool
         for i, scene in enumerate(scenes):
             strategy = scene.get("strategy", "regenerate")
-            stype = scene.get("type", "unknown")
             seg_out = workdir / f"seg_{i:02d}.mp4"
-            t0 = time.time()
-            logger.info(f"  segment {i+1}/{len(scenes)} ({scene['start']:.1f}-"
-                        f"{scene['end']:.1f}s) type={stype} strategy={strategy}")
-
-            if strategy == "keep_original":
-                _cut_segment(src, scene["start"], scene["duration"], seg_out)
-            elif strategy == "text_template":
-                txt = scene.get("visible_text") or "Magic Forge"
-                _text_card_video(txt, scene["duration"], seg_out)
-            elif strategy == "regenerate":
-                try:
-                    _runway_chunk(src, scene, canonical, params, user, seg_out, model=model)
-                except Exception as e:
-                    logger.warning(f"  runway chunk failed, fallback to keep_original: {e}")
-                    _cut_segment(src, scene["start"], scene["duration"], seg_out)
-                    strategy = "keep_original_fallback"
-            elif strategy == "image_edit_overlay":
-                # TODO: GPT-image-1 edit; for MVP — fallback to keep_original
-                _cut_segment(src, scene["start"], scene["duration"], seg_out)
-                strategy = "keep_original_pending_image_edit"
+            stype = scene.get("type", "unknown")
+            logger.info(f"  scheduling segment {i+1}/{len(scenes)} "
+                        f"({scene['start']:.1f}-{scene['end']:.1f}s) "
+                        f"type={stype} strategy={strategy}")
+            if strategy == "regenerate":
+                runway_jobs[i] = (scene, seg_out)
             else:
-                _cut_segment(src, scene["start"], scene["duration"], seg_out)
+                idx, eff_strategy, elapsed = _do_local(i, scene, seg_out)
+                segments[idx] = seg_out
+                segments_meta[idx] = {
+                    "index": idx, "start": scene["start"], "end": scene["end"],
+                    "type": stype, "strategy": eff_strategy,
+                    "elapsed_sec": round(elapsed, 1),
+                }
 
-            elapsed = time.time() - t0
-            segments.append(seg_out)
-            segments_meta.append({
-                "index": i, "start": scene["start"], "end": scene["end"],
-                "type": stype, "strategy": strategy, "elapsed_sec": round(elapsed, 1),
-            })
+        # Шаг 2: Runway chunks параллельно (max 4 одновременно — Runway throttle safe)
+        if runway_jobs:
+            logger.info(f"  launching {len(runway_jobs)} Runway chunks in parallel")
+            t_par = time.time()
+            with ThreadPoolExecutor(max_workers=min(4, len(runway_jobs))) as ex:
+                future_to_idx = {
+                    ex.submit(_runway_chunk, src, scene, canonical, params, user, seg_out, model): i
+                    for i, (scene, seg_out) in runway_jobs.items()
+                }
+                for fut in as_completed(future_to_idx):
+                    idx = future_to_idx[fut]
+                    scene, seg_out = runway_jobs[idx]
+                    stype = scene.get("type", "unknown")
+                    try:
+                        fut.result()
+                        eff_strategy = "regenerate"
+                    except Exception as e:
+                        logger.warning(f"  runway chunk #{idx} failed, fallback: {e}")
+                        _cut_segment(src, scene["start"], scene["duration"], seg_out)
+                        eff_strategy = "keep_original_fallback"
+                    segments[idx] = seg_out
+                    segments_meta[idx] = {
+                        "index": idx, "start": scene["start"], "end": scene["end"],
+                        "type": stype, "strategy": eff_strategy,
+                        "elapsed_sec": round(time.time() - t_par, 1),
+                    }
+            logger.info(f"  Runway chunks done in {time.time() - t_par:.1f}s wall-clock")
+
+        # Drop placeholders
+        segments = [s for s in segments if s is not None]
+        segments_meta = [m for m in segments_meta if m is not None]
 
         # Concat
         final = workdir / "final.mp4"
         _concat_segments(segments, final)
         logger.info(f"hybrid concat done: {final.stat().st_size//1024} KB")
+
+        # Cost breakdown (PR #23)
+        from app.core.cost_calculator import cost_breakdown, RUNWAY_USD_CENTS_PER_SEC
+        chunks_data = []
+        for meta in segments_meta:
+            if meta["strategy"] == "regenerate":
+                dur = meta["end"] - meta["start"]
+                chunks_data.append({
+                    "model": model,
+                    "duration_sec": 10 if dur > 7 else 5,
+                })
+        breakdown = cost_breakdown(
+            analyzer_audio_sec=src_dur,
+            analyzer_frames=6,
+            scene_classify_count=len(scenes),
+            recipe_count=1 if recipe else 0,
+            runway_chunks=chunks_data,
+        )
+        logger.info(f"💰 hybrid gv #{gv.id} cost ≈ {breakdown['total_usd']}")
 
         # Upload final to R2
         key = f"users/{user.id}/hybrid/{gv.id}_{uuid.uuid4().hex[:8]}.mp4"
@@ -304,8 +364,10 @@ def execute_hybrid_remake(
         gv.media_url = r2.get_public_url(key)
         gv.status = GenerationStatus.READY
         gv.completed_at = datetime.utcnow()
+        gv.cost_kopecks = breakdown["total"]  # в USD cents
         gv.provider_params = {**(gv.provider_params or {}),
-                              "hybrid_segments": segments_meta}
+                              "hybrid_segments": segments_meta,
+                              "cost_breakdown": breakdown}
         db.commit()
         logger.info(f"✅ hybrid remake gv #{gv.id} READY ({len(segments)} segments)")
         return key

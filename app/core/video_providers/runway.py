@@ -96,9 +96,14 @@ class RunwayProvider(VideoProviderBase):
         model = (request.extra.get("model") if request.extra else None) or self.DEFAULT_MODEL
         ratio = (request.extra.get("ratio") if request.extra else None) \
             or _ratio_for(model, request.aspect_ratio)
+        # Runway hard limit on promptText: 1000 chars (validation 400)
+        prompt = request.prompt or ""
+        if len(prompt) > 1000:
+            logger.warning(f"Runway: trimming prompt {len(prompt)} → 1000 chars")
+            prompt = prompt[:997] + "..."
         payload: dict[str, Any] = {
             "model": model,
-            "promptText": request.prompt,
+            "promptText": prompt,
             "ratio": ratio,
             "duration": request.duration_seconds,
         }

@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reelstracker Forge — Content Pipeline</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { background: #0a0a0a; color: #e5e5e5; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+  .glass { background: rgba(255,255,255,0.04); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.08); }
+  .glass-tab { background: rgba(255,255,255,0.06); }
+  .glass-tab.active { background: rgba(255,255,255,0.14); border-bottom: 2px solid #a78bfa; }
+  .btn-primary { background: linear-gradient(135deg, #7c3aed 0%, #ec4899 100%); }
+  .btn-primary:hover { opacity: 0.9; }
+  .badge-ready { background: rgba(34,197,94,0.2); color: #4ade80; }
+  .badge-pending { background: rgba(234,179,8,0.2); color: #facc15; }
+  .badge-running { background: rgba(59,130,246,0.2); color: #60a5fa; }
+  .badge-failed { background: rgba(239,68,68,0.2); color: #f87171; }
+  pre { font-family: ui-monospace, monospace; font-size: 11px; line-height: 1.5; }
+  .scroll-x { overflow-x: auto; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: rgba(255,255,255,0.02); }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
+</style>
+</head>
+<body class="min-h-screen p-4">
+
+<div class="max-w-7xl mx-auto">
+  <!-- HEADER -->
+  <header class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-bold">🔥 Reelstracker Forge</h1>
+      <p class="text-sm text-gray-400">Content pipeline: download → analyze → recipe → remake → publish</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <a href="/tracker.html" class="text-sm text-gray-400 hover:text-white">← Tracker</a>
+      <button id="logout-btn" class="text-sm text-gray-400 hover:text-white">Выйти</button>
+    </div>
+  </header>
+
+  <!-- TABS -->
+  <nav class="flex gap-1 mb-6 border-b border-gray-800">
+    <button data-tab="reels" class="glass-tab active px-4 py-3 text-sm rounded-t-lg">📦 Reels</button>
+    <button data-tab="recipes" class="glass-tab px-4 py-3 text-sm rounded-t-lg">🧬 Recipes</button>
+    <button data-tab="generations" class="glass-tab px-4 py-3 text-sm rounded-t-lg">🎬 Generations</button>
+    <button data-tab="posts" class="glass-tab px-4 py-3 text-sm rounded-t-lg">📤 Posts</button>
+    <button data-tab="targets" class="glass-tab px-4 py-3 text-sm rounded-t-lg">🎯 Targets</button>
+    <button data-tab="auto" class="glass-tab px-4 py-3 text-sm rounded-t-lg">⚡ Auto-Pipeline</button>
+    <button onclick="openVoiceClone()" class="glass-tab px-4 py-3 text-sm rounded-t-lg ml-auto" title="MSI XTTS voice clone">🎙 Voice clone</button>
+  </nav>
+
+  <!-- TAB: REELS -->
+  <section data-tab-content="reels">
+    <div class="flex justify-between items-center mb-4">
+      <h2 class="text-lg font-semibold">Скачанные / проанализированные рилсы</h2>
+      <div class="flex gap-2">
+        <input id="reels-filter" placeholder="фильтр по username..." class="bg-gray-900 px-3 py-1.5 rounded text-sm w-48" />
+        <button onclick="loadReels()" class="glass px-3 py-1.5 rounded text-sm">⟳ Обновить</button>
+      </div>
+    </div>
+    <div id="reels-list" class="space-y-2">
+      <div class="text-center text-gray-500 py-8">Загружаю...</div>
+    </div>
+  </section>
+
+  <!-- TAB: RECIPES -->
+  <section data-tab-content="recipes" class="hidden">
+    <div class="flex justify-between items-center mb-4">
+      <h2 class="text-lg font-semibold">Извлечённые рецепты</h2>
+      <button onclick="loadRecipes()" class="glass px-3 py-1.5 rounded text-sm">⟳ Обновить</button>
+    </div>
+    <div id="recipes-list" class="space-y-2">
+      <div class="text-center text-gray-500 py-8">Загружаю...</div>
+    </div>
+  </section>
+
+  <!-- TAB: GENERATIONS -->
+  <section data-tab-content="generations" class="hidden">
+    <div class="flex justify-between items-center mb-4">
+      <h2 class="text-lg font-semibold">Сгенерированные видео</h2>
+      <div class="flex gap-2">
+        <button onclick="openCreateGenModal()" class="btn-primary px-4 py-1.5 rounded text-sm font-medium">+ Новая генерация</button>
+        <button onclick="loadGenerations()" class="glass px-3 py-1.5 rounded text-sm">⟳ Обновить</button>
+      </div>
+    </div>
+    <div id="generations-list" class="space-y-2">
+      <div class="text-center text-gray-500 py-8">Загружаю...</div>
+    </div>
+  </section>
+
+  <!-- TAB: POSTS -->
+  <section data-tab-content="posts" class="hidden">
+    <div class="flex justify-between items-center mb-4">
+      <h2 class="text-lg font-semibold">Публикации</h2>
+      <div class="flex gap-2">
+        <button onclick="openCreatePostModal()" class="btn-primary px-4 py-1.5 rounded text-sm font-medium">+ Новый пост</button>
+        <button onclick="loadPosts()" class="glass px-3 py-1.5 rounded text-sm">⟳ Обновить</button>
+      </div>
+    </div>
+    <div id="posts-list" class="space-y-2">
+      <div class="text-center text-gray-500 py-8">Загружаю...</div>
+    </div>
+  </section>
+
+  <!-- TAB: TARGETS -->
+  <section data-tab-content="targets" class="hidden">
+    <div class="flex justify-between items-center mb-4">
+      <h2 class="text-lg font-semibold">Posting Targets (IG / TT / VK / YT)</h2>
+      <div class="flex gap-2">
+        <button onclick="openCreateTargetModal()" class="btn-primary px-4 py-1.5 rounded text-sm font-medium">+ Добавить target</button>
+        <button onclick="loadTargets()" class="glass px-3 py-1.5 rounded text-sm">⟳ Обновить</button>
+      </div>
+    </div>
+    <div id="targets-list" class="space-y-2">
+      <div class="text-center text-gray-500 py-8">Загружаю...</div>
+    </div>
+  </section>
+
+  <!-- TAB: AUTO-PIPELINE -->
+  <section data-tab-content="auto" class="hidden">
+    <div class="flex justify-between items-center mb-4">
+      <h2 class="text-lg font-semibold">Auto-Remake настройки по аккаунтам</h2>
+      <button onclick="loadAutoAccounts()" class="glass px-3 py-1.5 rounded text-sm">⟳ Обновить</button>
+    </div>
+    <div class="glass rounded-lg p-4 mb-4 text-sm text-gray-300">
+      <p class="mb-2"><strong>Как работает</strong>: при синхронизации аккаунта (раз в час), для каждого reel с views ↑ ×N за M часов автоматически:</p>
+      <ol class="list-decimal list-inside text-xs text-gray-400 space-y-1 ml-2">
+        <li>скачивается в R2 (если auto_download_media)</li>
+        <li>анализируется Whisper + Vision + scenes + hook (если auto_analyze_media)</li>
+        <li>извлекается ContentRecipe</li>
+        <li>создаётся remake через Runway gen4.5 с подставленными RemakeParams</li>
+        <li>uniqify (если auto_uniqify)</li>
+        <li>публикуется в auto_posting_target (если auto_publish)</li>
+      </ol>
+    </div>
+    <div id="auto-accounts-list" class="space-y-2">
+      <div class="text-center text-gray-500 py-8">Загружаю...</div>
+    </div>
+  </section>
+</div>
+
+<!-- MODAL: Create Generation -->
+<div id="create-gen-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+  <div class="glass max-w-2xl w-full rounded-lg p-6">
+    <h3 class="text-lg font-semibold mb-4">Новая генерация</h3>
+    <form onsubmit="submitCreateGen(event)" class="space-y-3">
+      <div>
+        <label class="block text-sm mb-1">Promt (то что будет сгенерено)</label>
+        <textarea name="prompt" rows="4" required class="w-full bg-gray-900 px-3 py-2 rounded text-sm"
+                  placeholder="A close-up of luxury black perfume bottle on marble, soft window light, slow rotation, cinematic 4K"></textarea>
+      </div>
+      <div class="grid grid-cols-3 gap-3">
+        <div>
+          <label class="block text-sm mb-1">Provider</label>
+          <select name="provider" class="w-full bg-gray-900 px-2 py-2 rounded text-sm">
+            <option value="runway">Runway</option>
+            <option value="mock">Mock</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm mb-1">Model</label>
+          <select name="model" class="w-full bg-gray-900 px-2 py-2 rounded text-sm">
+            <option value="gen4.5">gen4.5</option>
+            <option value="veo3.1_fast">veo3.1_fast</option>
+            <option value="gen4_turbo">gen4_turbo</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm mb-1">Длительность (сек)</label>
+          <input name="duration_seconds" type="number" min="1" max="30" value="5" class="w-full bg-gray-900 px-2 py-2 rounded text-sm" />
+        </div>
+      </div>
+      <div>
+        <label class="block text-sm mb-1">Aspect ratio</label>
+        <select name="aspect_ratio" class="w-full bg-gray-900 px-2 py-2 rounded text-sm">
+          <option value="9:16">9:16 (Reels / TikTok)</option>
+          <option value="1:1">1:1</option>
+          <option value="16:9">16:9</option>
+        </select>
+      </div>
+      <div class="flex justify-end gap-2 pt-3">
+        <button type="button" onclick="closeModal('create-gen-modal')" class="px-4 py-2 text-sm">Отмена</button>
+        <button type="submit" class="btn-primary px-4 py-2 rounded text-sm font-medium">Создать</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- MODAL: Create Target -->
+<div id="create-target-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+  <div class="glass max-w-2xl w-full rounded-lg p-6">
+    <h3 class="text-lg font-semibold mb-4">Добавить Posting Target</h3>
+    <form onsubmit="submitCreateTarget(event)" class="space-y-3">
+      <div>
+        <label class="block text-sm mb-1">Platform</label>
+        <select name="platform" class="w-full bg-gray-900 px-2 py-2 rounded text-sm">
+          <option value="instagram">Instagram</option>
+          <option value="tiktok">TikTok</option>
+          <option value="vk_clips">VK Clips</option>
+          <option value="youtube_shorts">YouTube Shorts</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm mb-1">Platform account ID</label>
+        <input name="platform_account_id" required class="w-full bg-gray-900 px-3 py-2 rounded text-sm"
+               placeholder="IG: 17841... / TT: open_id / VK: -group_id / YT: channel_id" />
+      </div>
+      <div>
+        <label class="block text-sm mb-1">Username (опционально, для UI)</label>
+        <input name="platform_username" class="w-full bg-gray-900 px-3 py-2 rounded text-sm" placeholder="@mimic.parfum" />
+      </div>
+      <div>
+        <label class="block text-sm mb-1">Access token (long-lived)</label>
+        <textarea name="access_token" rows="2" required class="w-full bg-gray-900 px-3 py-2 rounded text-sm font-mono text-xs"></textarea>
+      </div>
+      <div>
+        <label class="block text-sm mb-1">Default caption template (опц.)</label>
+        <textarea name="default_caption_template" rows="2" class="w-full bg-gray-900 px-3 py-2 rounded text-sm"
+                  placeholder="Каждый пост по умолчанию подтянет этот текст"></textarea>
+      </div>
+      <div class="flex justify-end gap-2 pt-3">
+        <button type="button" onclick="closeModal('create-target-modal')" class="px-4 py-2 text-sm">Отмена</button>
+        <button type="submit" class="btn-primary px-4 py-2 rounded text-sm font-medium">Добавить</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- MODAL: Create Post -->
+<div id="create-post-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+  <div class="glass max-w-2xl w-full rounded-lg p-6">
+    <h3 class="text-lg font-semibold mb-4">Опубликовать видео</h3>
+    <form onsubmit="submitCreatePost(event)" class="space-y-3">
+      <div>
+        <label class="block text-sm mb-1">GeneratedVideo</label>
+        <select name="generated_video_id" id="post-gv-select" required class="w-full bg-gray-900 px-2 py-2 rounded text-sm">
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm mb-1">Posting Target</label>
+        <select name="posting_target_id" id="post-target-select" required class="w-full bg-gray-900 px-2 py-2 rounded text-sm">
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm mb-1">Caption</label>
+        <textarea name="caption" rows="3" class="w-full bg-gray-900 px-3 py-2 rounded text-sm"></textarea>
+      </div>
+      <div class="flex items-center gap-2">
+        <input type="checkbox" name="publish_now" id="publish-now-chk" checked class="rounded" />
+        <label for="publish-now-chk" class="text-sm">Опубликовать сразу</label>
+      </div>
+      <div class="flex justify-end gap-2 pt-3">
+        <button type="button" onclick="closeModal('create-post-modal')" class="px-4 py-2 text-sm">Отмена</button>
+        <button type="submit" class="btn-primary px-4 py-2 rounded text-sm font-medium">Создать</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- MODAL: Face Swap (MSI) -->
+<div id="face-swap-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+  <div class="glass max-w-md w-full rounded-lg p-6">
+    <h3 class="text-lg font-semibold mb-4">👤 Face swap через MSI ReActor</h3>
+    <p class="text-xs text-gray-400 mb-3">Подменит лицо в видео #<span id="fs-gv-id"></span> на присланное.
+      Бесплатно (MSI RTX 3070). Только когда приложение крутится с Tailscale-доступом к MSI.</p>
+    <form onsubmit="submitFaceSwap(event)" class="space-y-3">
+      <input type="hidden" id="fs-gv-input" />
+      <div>
+        <label class="block text-sm mb-1">Reference face (jpg/png)</label>
+        <input type="file" name="face_image" accept="image/*" required class="w-full bg-gray-900 px-3 py-2 rounded text-sm" />
+      </div>
+      <div class="flex justify-end gap-2">
+        <button type="button" onclick="closeModal('face-swap-modal')" class="px-4 py-2 text-sm">Отмена</button>
+        <button type="submit" class="btn-primary px-4 py-2 rounded text-sm font-medium">Запустить</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- MODAL: Voice Clone (MSI) -->
+<div id="voice-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+  <div class="glass max-w-xl w-full rounded-lg p-6">
+    <h3 class="text-lg font-semibold mb-4">🎙 Voice clone через MSI XTTS-v2</h3>
+    <p class="text-xs text-gray-400 mb-3">Клонирует голос из референса под произнесение твоего текста.
+      16 языков. Бесплатно (MSI RTX 3070).</p>
+    <form onsubmit="submitVoiceClone(event)" class="space-y-3">
+      <div>
+        <label class="block text-sm mb-1">Текст (что произнести)</label>
+        <textarea name="text" rows="4" required class="w-full bg-gray-900 px-3 py-2 rounded text-sm"
+                  placeholder="Это мимик, ищи на Вайлдберриз."></textarea>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-sm mb-1">Язык</label>
+          <select name="language" class="w-full bg-gray-900 px-2 py-2 rounded text-sm">
+            <option value="ru" selected>ru</option><option value="en">en</option>
+            <option value="es">es</option><option value="fr">fr</option><option value="de">de</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm mb-1">Reference voice (wav/mp3, 3+ сек)</label>
+          <input type="file" name="ref_voice" accept="audio/*" required class="w-full bg-gray-900 px-2 py-2 rounded text-sm" />
+        </div>
+      </div>
+      <div id="voice-result" class="hidden mt-3 p-3 bg-green-900/20 rounded">
+        <div class="text-sm text-green-400 mb-2">✅ Готово</div>
+        <audio id="voice-audio" controls class="w-full"></audio>
+        <a id="voice-link" class="text-xs text-blue-400 hover:underline" target="_blank">прямая ссылка R2</a>
+      </div>
+      <div class="flex justify-end gap-2">
+        <button type="button" onclick="closeModal('voice-modal')" class="px-4 py-2 text-sm">Закрыть</button>
+        <button type="submit" class="btn-primary px-4 py-2 rounded text-sm font-medium">🎙 Клонировать</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- MODAL: Remake from recipe/reel -->
+<div id="remake-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+  <div class="glass max-w-3xl w-full rounded-lg p-6 max-h-[90vh] overflow-y-auto">
+    <h3 class="text-lg font-semibold mb-4">🎬 Сделать ремейк <span id="remake-source" class="text-sm text-gray-400"></span></h3>
+    <form onsubmit="submitRemake(event)" class="space-y-3">
+      <input type="hidden" name="recipe_id" id="remake-recipe-id" />
+      <input type="hidden" name="reel_id" id="remake-reel-id" />
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="block text-xs text-gray-400 mb-1">Brand</label>
+          <input name="brand" placeholder="MIMIC" class="w-full bg-gray-900 px-2 py-1.5 rounded text-sm" /></div>
+        <div><label class="block text-xs text-gray-400 mb-1">Product description</label>
+          <input name="product_description" placeholder="glossy black perfume bottle" class="w-full bg-gray-900 px-2 py-1.5 rounded text-sm" /></div>
+        <div><label class="block text-xs text-gray-400 mb-1">Face description</label>
+          <input name="face_description" placeholder="young woman, mid-20s, ..." class="w-full bg-gray-900 px-2 py-1.5 rounded text-sm" /></div>
+        <div><label class="block text-xs text-gray-400 mb-1">Voice description</label>
+          <input name="voice_description" placeholder="warm female voice, casual Russian" class="w-full bg-gray-900 px-2 py-1.5 rounded text-sm" /></div>
+        <div><label class="block text-xs text-gray-400 mb-1">Location</label>
+          <input name="location_description" placeholder="minimalist marble bathroom" class="w-full bg-gray-900 px-2 py-1.5 rounded text-sm" /></div>
+        <div><label class="block text-xs text-gray-400 mb-1">Outfit</label>
+          <input name="outfit_description" placeholder="beige trench, gold hoops" class="w-full bg-gray-900 px-2 py-1.5 rounded text-sm" /></div>
+        <div><label class="block text-xs text-gray-400 mb-1">Palette</label>
+          <input name="palette" placeholder="warm muted, soft window light" class="w-full bg-gray-900 px-2 py-1.5 rounded text-sm" /></div>
+        <div><label class="block text-xs text-gray-400 mb-1">Extra instructions</label>
+          <input name="extra_instructions" placeholder="vertical 9:16, cinematic" class="w-full bg-gray-900 px-2 py-1.5 rounded text-sm" /></div>
+      </div>
+      <div class="grid grid-cols-3 gap-3 pt-2">
+        <div><label class="block text-xs text-gray-400 mb-1">Provider</label>
+          <select name="provider" class="w-full bg-gray-900 px-2 py-1.5 rounded text-sm">
+            <option value="runway">Runway</option><option value="mock">Mock</option>
+          </select></div>
+        <div><label class="block text-xs text-gray-400 mb-1">Model</label>
+          <select name="model" class="w-full bg-gray-900 px-2 py-1.5 rounded text-sm">
+            <option value="gen4.5">gen4.5</option><option value="veo3.1_fast">veo3.1_fast</option>
+          </select></div>
+        <div><label class="block text-xs text-gray-400 mb-1">Длительность (сек)</label>
+          <input name="duration_seconds" type="number" min="1" max="30" value="5" class="w-full bg-gray-900 px-2 py-1.5 rounded text-sm" /></div>
+      </div>
+      <div class="flex justify-end gap-2 pt-3">
+        <button type="button" onclick="closeModal('remake-modal')" class="px-4 py-2 text-sm">Отмена</button>
+        <button type="submit" class="btn-primary px-4 py-2 rounded text-sm font-medium">🎬 Запустить</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+// ============================ AUTH (re-use from tracker.html) ============================
+let accessToken = localStorage.getItem('access_token');
+if (!accessToken) { location.href = '/login.html'; }
+
+function authHeaders() { return accessToken ? { 'Authorization': 'Bearer ' + accessToken } : {}; }
+async function apiFetch(path, options = {}) {
+  options.headers = { ...authHeaders(), 'Content-Type': 'application/json', ...(options.headers || {}) };
+  const r = await fetch(path, options);
+  if (r.status === 401) { localStorage.clear(); location.href = '/login.html'; return; }
+  return r;
+}
+document.getElementById('logout-btn').onclick = () => {
+  localStorage.clear(); location.href = '/login.html';
+};
+
+// ============================ TABS ============================
+document.querySelectorAll('[data-tab]').forEach(btn => {
+  btn.onclick = () => {
+    const tab = btn.dataset.tab;
+    document.querySelectorAll('[data-tab]').forEach(b => b.classList.toggle('active', b === btn));
+    document.querySelectorAll('[data-tab-content]').forEach(s => s.classList.toggle('hidden', s.dataset.tabContent !== tab));
+    const loaders = { reels: loadReels, recipes: loadRecipes, generations: loadGenerations,
+                      posts: loadPosts, targets: loadTargets, auto: loadAutoAccounts };
+    if (loaders[tab]) loaders[tab]();
+  };
+});
+
+// ============================ HELPERS ============================
+function statusBadge(s) {
+  const cls = { READY: 'badge-ready', ready: 'badge-ready', PUBLISHED: 'badge-ready', COMPLETED: 'badge-ready',
+                PENDING: 'badge-pending', pending: 'badge-pending', DRAFT: 'badge-pending', SCHEDULED: 'badge-pending',
+                RUNNING: 'badge-running', running: 'badge-running', UPLOADING: 'badge-running', PUBLISHING: 'badge-running',
+                FAILED: 'badge-failed', failed: 'badge-failed' }[s] || 'badge-pending';
+  return `<span class="px-2 py-0.5 rounded text-xs ${cls}">${s}</span>`;
+}
+function timeAgo(ts) {
+  if (!ts) return '—';
+  const d = new Date(ts), now = new Date(), s = (now - d) / 1000;
+  if (s < 60) return `${Math.floor(s)}s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
+function esc(s) { return (s || '').toString().replace(/[<>&"]/g, c => ({ '<':'&lt;', '>':'&gt;', '&':'&amp;', '"':'&quot;' }[c])); }
+function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
+function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+// ============================ REELS ============================
+async function loadReels() {
+  const div = document.getElementById('reels-list');
+  div.innerHTML = '<div class="text-center text-gray-500 py-8">Загружаю...</div>';
+  const filter = document.getElementById('reels-filter').value.toLowerCase();
+  const r = await apiFetch('/api/reels?include_accounts=true');
+  if (!r.ok) { div.innerHTML = '<div class="text-red-400">Ошибка</div>'; return; }
+  let reels = await r.json();
+  if (filter) reels = reels.filter(x => (x.author_username || '').toLowerCase().includes(filter));
+  if (!reels.length) { div.innerHTML = '<div class="text-center text-gray-500 py-8">Нет рилсов</div>'; return; }
+  div.innerHTML = reels.map(r => `
+    <div class="glass rounded-lg p-3 flex items-center gap-3">
+      ${r.thumbnail_url ? `<img src="https://wsrv.nl/?url=${encodeURIComponent(r.thumbnail_url)}" class="w-16 h-16 object-cover rounded" />` : '<div class="w-16 h-16 bg-gray-800 rounded"></div>'}
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-2"><span class="font-medium truncate">${esc(r.title)}</span>
+          ${r.media_storage_key ? '<span class="text-xs text-green-400">📥 cached</span>' : ''}
+          ${r.transcript ? '<span class="text-xs text-blue-400">🎙 transcribed</span>' : ''}
+          ${r.hook_type ? `<span class="text-xs px-1.5 py-0.5 bg-purple-900/40 rounded">${r.hook_type}</span>` : ''}
+        </div>
+        <div class="text-xs text-gray-400">@${esc(r.author_username || '?')} · ${r.views || 0} views · ${r.likes || 0} likes</div>
+        <div class="text-xs text-gray-500 mt-0.5">${(r.visual_summary || '').slice(0, 120)}${(r.visual_summary || '').length > 120 ? '...' : ''}</div>
+      </div>
+      <div class="flex gap-1">
+        ${!r.media_storage_key ? `<button onclick="reelDownload(${r.id})" class="text-xs px-2 py-1 glass rounded">📥</button>` : ''}
+        ${r.media_storage_key && !r.analyzed_at ? `<button onclick="reelAnalyze(${r.id})" class="text-xs px-2 py-1 glass rounded">🔍</button>` : ''}
+        ${r.transcript ? `<button onclick="extractRecipe(${r.id})" class="text-xs px-2 py-1 glass rounded">🧬</button>` : ''}
+        <button onclick="remakeFromReel(${r.id})" class="text-xs px-2 py-1 btn-primary rounded">🎬</button>
+      </div>
+    </div>
+  `).join('');
+}
+async function reelDownload(id) {
+  const r = await apiFetch(`/api/reels/${id}/download`, { method: 'POST' });
+  alert(r.ok ? '✅ Download queued' : '❌ ' + (await r.text()));
+  loadReels();
+}
+async function reelAnalyze(id) {
+  const r = await apiFetch(`/api/reels/${id}/analyze`, { method: 'POST' });
+  alert(r.ok ? '✅ Analyze queued' : '❌ ' + (await r.text()));
+  loadReels();
+}
+async function extractRecipe(reelId) {
+  const r = await apiFetch(`/api/recipes/from-reel/${reelId}`, { method: 'POST' });
+  if (r.ok) { alert('✅ Recipe extracted'); document.querySelector('[data-tab="recipes"]').click(); }
+  else alert('❌ ' + (await r.text()));
+}
+function remakeFromReel(reelId) {
+  document.getElementById('remake-reel-id').value = reelId;
+  document.getElementById('remake-recipe-id').value = '';
+  document.getElementById('remake-source').textContent = `(из reel #${reelId})`;
+  openModal('remake-modal');
+}
+
+// ============================ RECIPES ============================
+async function loadRecipes() {
+  const div = document.getElementById('recipes-list');
+  div.innerHTML = '<div class="text-center text-gray-500 py-8">Загружаю...</div>';
+  const r = await apiFetch('/api/recipes');
+  if (!r.ok) { div.innerHTML = '<div class="text-red-400">Ошибка</div>'; return; }
+  const { items, total } = await r.json();
+  if (!items.length) { div.innerHTML = '<div class="text-center text-gray-500 py-8">Нет рецептов — извлеки из reel</div>'; return; }
+  div.innerHTML = items.map(rec => `
+    <div class="glass rounded-lg p-3">
+      <div class="flex justify-between items-start mb-2">
+        <div>
+          <div class="font-medium">${esc(rec.name)}</div>
+          <div class="text-xs text-gray-400">${rec.hook_type} · ${rec.duration_sec || '?'}s · ${rec.language || ''} · из reel #${rec.source_reel_id || '?'} · ${timeAgo(rec.created_at)}</div>
+        </div>
+        <div class="flex gap-1">
+          <button onclick="remakeFromRecipe(${rec.id})" class="text-xs px-3 py-1 btn-primary rounded">🎬 Ремейк</button>
+          <button onclick="deleteRecipe(${rec.id})" class="text-xs px-2 py-1 glass rounded text-red-400">🗑</button>
+        </div>
+      </div>
+      ${rec.hook && rec.hook.text ? `<div class="text-xs text-gray-300 mb-1"><strong>Hook:</strong> «${esc(rec.hook.text)}»</div>` : ''}
+      ${rec.visual_motifs ? `<div class="text-xs text-gray-400 mb-1"><strong>Visual:</strong> ${rec.visual_motifs.slice(0, 3).map(esc).join(', ')}${rec.visual_motifs.length > 3 ? '...' : ''}</div>` : ''}
+      ${rec.canonical_prompt ? `<details class="mt-2"><summary class="cursor-pointer text-xs text-purple-400">canonical_prompt (${rec.canonical_prompt.length}c)</summary><pre class="mt-2 p-2 bg-black/40 rounded text-xs whitespace-pre-wrap">${esc(rec.canonical_prompt)}</pre></details>` : ''}
+    </div>
+  `).join('');
+}
+function remakeFromRecipe(id) {
+  document.getElementById('remake-recipe-id').value = id;
+  document.getElementById('remake-reel-id').value = '';
+  document.getElementById('remake-source').textContent = `(из recipe #${id})`;
+  openModal('remake-modal');
+}
+async function deleteRecipe(id) {
+  if (!confirm('Удалить?')) return;
+  await apiFetch(`/api/recipes/${id}`, { method: 'DELETE' });
+  loadRecipes();
+}
+async function submitRemake(ev) {
+  ev.preventDefault();
+  const fd = new FormData(ev.target), recipeId = fd.get('recipe_id'), reelId = fd.get('reel_id');
+  const params = {};
+  for (const k of ['brand', 'product_description', 'face_description', 'voice_description',
+                    'location_description', 'outfit_description', 'palette', 'extra_instructions']) {
+    const v = fd.get(k); if (v) params[k] = v;
+  }
+  const body = {
+    params,
+    provider: fd.get('provider'),
+    model: fd.get('model'),
+    duration_seconds: parseInt(fd.get('duration_seconds')),
+    aspect_ratio: '9:16',
+  };
+  const endpoint = recipeId ? '/api/remakes/from-recipe' : '/api/remakes/from-reel';
+  if (recipeId) body.recipe_id = parseInt(recipeId); else body.reel_id = parseInt(reelId);
+  const r = await apiFetch(endpoint, { method: 'POST', body: JSON.stringify(body) });
+  if (r.ok) {
+    closeModal('remake-modal');
+    alert('✅ Ремейк создан');
+    document.querySelector('[data-tab="generations"]').click();
+  } else alert('❌ ' + (await r.text()));
+}
+
+// ============================ GENERATIONS ============================
+async function loadGenerations() {
+  const div = document.getElementById('generations-list');
+  div.innerHTML = '<div class="text-center text-gray-500 py-8">Загружаю...</div>';
+  const r = await apiFetch('/api/generation');
+  if (!r.ok) { div.innerHTML = '<div class="text-red-400">Ошибка</div>'; return; }
+  const { items } = await r.json();
+  if (!items.length) { div.innerHTML = '<div class="text-center text-gray-500 py-8">Нет генераций</div>'; return; }
+  div.innerHTML = items.map(g => `
+    <div class="glass rounded-lg p-3">
+      <div class="flex items-center gap-2 mb-1">
+        ${statusBadge(g.status)}
+        <span class="text-xs text-gray-500">#${g.id} · ${g.provider} · ${timeAgo(g.created_at)}</span>
+        ${g.source_reel_id ? `<span class="text-xs px-2 py-0.5 bg-orange-900/30 text-orange-300 rounded">remake of reel #${g.source_reel_id}</span>` : ''}
+      </div>
+      <div class="text-xs text-gray-400 mb-2">${esc((g.prompt || '').slice(0, 200))}${g.prompt && g.prompt.length > 200 ? '...' : ''}</div>
+      ${g.error_message ? `<div class="text-xs text-red-400 mb-2">⚠ ${esc(g.error_message)}</div>` : ''}
+      ${g.media_url ? `
+        <div class="flex gap-2 items-center flex-wrap">
+          <video src="${g.media_url}" controls class="w-32 rounded" preload="metadata"></video>
+          ${g.uniq_media_url ? `<div class="text-xs text-green-400">+uniq</div>` : `<button onclick="uniqify(${g.id})" class="text-xs px-2 py-1 glass rounded" title="anti-fingerprint (ffmpeg)">🎲 uniqify</button>`}
+          <button onclick="openFaceSwap(${g.id})" class="text-xs px-2 py-1 glass rounded" title="MSI ReActor (free)">👤 face-swap (MSI)</button>
+          <a href="${g.media_url}" target="_blank" class="text-xs text-blue-400 hover:underline">оригинал</a>
+          ${g.uniq_media_url ? `<a href="${g.uniq_media_url}" target="_blank" class="text-xs text-green-400 hover:underline">uniq</a>` : ''}
+        </div>` : ''}
+    </div>
+  `).join('');
+}
+async function uniqify(id) {
+  const r = await apiFetch(`/api/generation/${id}/uniqify`, { method: 'POST' });
+  alert(r.ok ? '✅ Uniq готов' : '❌ ' + (await r.text()));
+  loadGenerations();
+}
+function openFaceSwap(gvId) {
+  document.getElementById('fs-gv-id').textContent = gvId;
+  document.getElementById('fs-gv-input').value = gvId;
+  openModal('face-swap-modal');
+}
+async function submitFaceSwap(ev) {
+  ev.preventDefault();
+  const gvId = document.getElementById('fs-gv-input').value;
+  const fd = new FormData(ev.target);
+  const r = await fetch(`/api/generation/${gvId}/face-swap`, {
+    method: 'POST', headers: authHeaders(), body: fd,
+  });
+  if (r.ok) { closeModal('face-swap-modal'); alert('✅ Face swap готов'); loadGenerations(); }
+  else alert('❌ ' + (await r.text()));
+}
+function openVoiceClone() {
+  document.getElementById('voice-result').classList.add('hidden');
+  openModal('voice-modal');
+}
+async function submitVoiceClone(ev) {
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  const r = await fetch('/api/voice/clone', {
+    method: 'POST', headers: authHeaders(), body: fd,
+  });
+  if (r.ok) {
+    const data = await r.json();
+    document.getElementById('voice-result').classList.remove('hidden');
+    document.getElementById('voice-audio').src = data.media_url;
+    document.getElementById('voice-link').href = data.media_url;
+  } else alert('❌ ' + (await r.text()));
+}
+async function submitCreateGen(ev) {
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  const body = Object.fromEntries(fd.entries());
+  body.duration_seconds = parseInt(body.duration_seconds);
+  const r = await apiFetch('/api/generation', { method: 'POST', body: JSON.stringify(body) });
+  if (r.ok) { closeModal('create-gen-modal'); loadGenerations(); }
+  else alert('❌ ' + (await r.text()));
+}
+function openCreateGenModal() { openModal('create-gen-modal'); }
+
+// ============================ POSTS + TARGETS ============================
+async function loadPosts() {
+  const div = document.getElementById('posts-list');
+  const r = await apiFetch('/api/posts');
+  if (!r.ok) { div.innerHTML = '<div class="text-red-400">Ошибка</div>'; return; }
+  const { items } = await r.json();
+  if (!items.length) { div.innerHTML = '<div class="text-center text-gray-500 py-8">Нет постов</div>'; return; }
+  div.innerHTML = items.map(p => `
+    <div class="glass rounded-lg p-3">
+      <div class="flex items-center gap-2 mb-1">${statusBadge(p.status)}
+        <span class="text-xs text-gray-500">#${p.id} · gv #${p.generated_video_id} → target #${p.posting_target_id} · ${timeAgo(p.created_at)}</span></div>
+      ${p.caption ? `<div class="text-xs text-gray-300 mb-1">${esc(p.caption)}</div>` : ''}
+      ${p.platform_url ? `<a href="${p.platform_url}" target="_blank" class="text-xs text-blue-400 hover:underline">${p.platform_url}</a>` : ''}
+      ${p.error_message ? `<div class="text-xs text-red-400">⚠ ${esc(p.error_message)}</div>` : ''}
+      ${p.status === 'DRAFT' ? `<button onclick="publishPost(${p.id})" class="mt-2 text-xs px-3 py-1 btn-primary rounded">📤 Опубликовать сейчас</button>` : ''}
+    </div>
+  `).join('');
+}
+async function publishPost(id) {
+  const r = await apiFetch(`/api/posts/${id}/publish`, { method: 'POST' });
+  alert(r.ok ? '✅ Поставлено в очередь' : '❌ ' + (await r.text()));
+  loadPosts();
+}
+async function openCreatePostModal() {
+  const [gvR, tgR] = await Promise.all([apiFetch('/api/generation'), apiFetch('/api/posting-targets')]);
+  const { items: gvs } = await gvR.json(); const targets = await tgR.json();
+  document.getElementById('post-gv-select').innerHTML = gvs
+    .filter(g => g.media_url)
+    .map(g => `<option value="${g.id}">#${g.id} ${g.status} · ${(g.prompt || '').slice(0, 60)}</option>`).join('');
+  document.getElementById('post-target-select').innerHTML = targets
+    .map(t => `<option value="${t.id}">[${t.platform}] @${t.platform_username || t.platform_account_id}</option>`).join('');
+  openModal('create-post-modal');
+}
+async function submitCreatePost(ev) {
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  const body = {
+    generated_video_id: parseInt(fd.get('generated_video_id')),
+    posting_target_id: parseInt(fd.get('posting_target_id')),
+    caption: fd.get('caption') || null,
+    publish_now: fd.get('publish_now') === 'on',
+  };
+  const r = await apiFetch('/api/posts', { method: 'POST', body: JSON.stringify(body) });
+  if (r.ok) { closeModal('create-post-modal'); loadPosts(); }
+  else alert('❌ ' + (await r.text()));
+}
+async function loadTargets() {
+  const div = document.getElementById('targets-list');
+  const r = await apiFetch('/api/posting-targets');
+  if (!r.ok) { div.innerHTML = '<div class="text-red-400">Ошибка</div>'; return; }
+  const targets = await r.json();
+  if (!targets.length) { div.innerHTML = '<div class="text-center text-gray-500 py-8">Нет целей публикации</div>'; return; }
+  div.innerHTML = targets.map(t => `
+    <div class="glass rounded-lg p-3 flex justify-between items-center">
+      <div>
+        <div class="font-medium">[${t.platform}] @${esc(t.platform_username || '?')}</div>
+        <div class="text-xs text-gray-400">id=${t.platform_account_id} · token=${t.has_token ? '✓' : '✗'} · ${timeAgo(t.created_at)}</div>
+      </div>
+      <button onclick="deleteTarget(${t.id})" class="text-xs px-2 py-1 glass rounded text-red-400">🗑</button>
+    </div>
+  `).join('');
+}
+function openCreateTargetModal() { openModal('create-target-modal'); }
+async function submitCreateTarget(ev) {
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  const body = Object.fromEntries(fd.entries());
+  for (const k of Object.keys(body)) if (!body[k]) delete body[k];
+  const r = await apiFetch('/api/posting-targets', { method: 'POST', body: JSON.stringify(body) });
+  if (r.ok) { closeModal('create-target-modal'); loadTargets(); }
+  else alert('❌ ' + (await r.text()));
+}
+async function deleteTarget(id) {
+  if (!confirm('Удалить target?')) return;
+  await apiFetch(`/api/posting-targets/${id}`, { method: 'DELETE' });
+  loadTargets();
+}
+
+// ============================ AUTO-PIPELINE ============================
+async function loadAutoAccounts() {
+  const div = document.getElementById('auto-accounts-list');
+  const r = await apiFetch('/api/accounts');
+  if (!r.ok) { div.innerHTML = '<div class="text-red-400">Ошибка</div>'; return; }
+  const accs = await r.json();
+  if (!accs.length) { div.innerHTML = '<div class="text-center text-gray-500 py-8">Сначала добавь IG-аккаунты в Tracker</div>'; return; }
+  div.innerHTML = accs.map(a => `
+    <div class="glass rounded-lg p-4">
+      <div class="flex justify-between items-start mb-3">
+        <div>
+          <div class="font-medium">@${esc(a.instagram_username)}</div>
+          <div class="text-xs text-gray-400">${a.followers_count || 0} followers · ${a.reels_count} reels трекаем</div>
+        </div>
+        <button onclick="saveAuto(${a.id})" class="btn-primary px-3 py-1 rounded text-xs">💾 Сохранить</button>
+      </div>
+      <div class="grid grid-cols-2 gap-3 text-sm" id="auto-form-${a.id}">
+        <label class="flex items-center gap-2"><input type="checkbox" data-field="auto_download_media" ${a.auto_download_media ? 'checked' : ''}> 📥 auto-download media</label>
+        <label class="flex items-center gap-2"><input type="checkbox" data-field="auto_analyze_media" ${a.auto_analyze_media ? 'checked' : ''}> 🔍 auto-analyze</label>
+        <label class="flex items-center gap-2"><input type="checkbox" data-field="auto_remake_enabled" ${a.auto_remake_enabled ? 'checked' : ''}> 🎬 auto-remake</label>
+        <label class="flex items-center gap-2"><input type="checkbox" data-field="auto_uniqify" ${a.auto_uniqify ? 'checked' : ''}> 🎲 auto-uniqify</label>
+        <label class="flex items-center gap-2"><input type="checkbox" data-field="auto_publish" ${a.auto_publish ? 'checked' : ''}> 📤 auto-publish</label>
+        <label class="flex items-center gap-2 text-xs">viral threshold ×<input type="number" step="0.5" min="1" data-field="viral_growth_threshold" value="${a.viral_growth_threshold || 2}" class="w-16 bg-gray-900 px-2 py-0.5 rounded"></label>
+        <label class="flex items-center gap-2 text-xs">window <input type="number" min="1" data-field="viral_window_hours" value="${a.viral_window_hours || 12}" class="w-16 bg-gray-900 px-2 py-0.5 rounded">h</label>
+      </div>
+      <details class="mt-2 text-xs">
+        <summary class="cursor-pointer text-gray-400">default_remake_params (JSON)</summary>
+        <textarea data-field="default_remake_params_json" rows="6" class="w-full mt-2 bg-gray-900 px-2 py-1 rounded font-mono text-xs">${esc(JSON.stringify(a.default_remake_params || { brand: 'MIMIC', product_description: '...', face_description: '...' }, null, 2))}</textarea>
+      </details>
+    </div>
+  `).join('');
+}
+async function saveAuto(id) {
+  const form = document.getElementById(`auto-form-${id}`);
+  const body = {};
+  form.querySelectorAll('[data-field]').forEach(el => {
+    const f = el.dataset.field;
+    if (el.type === 'checkbox') body[f] = el.checked;
+    else if (el.type === 'number') body[f] = parseFloat(el.value);
+  });
+  // default_remake_params (parent of form has textarea)
+  const ta = form.closest('.glass').querySelector('[data-field="default_remake_params_json"]');
+  if (ta && ta.value.trim()) {
+    try { body.default_remake_params = JSON.parse(ta.value); }
+    catch (e) { alert('❌ JSON в default_remake_params невалидный: ' + e); return; }
+  }
+  const r = await apiFetch(`/api/accounts/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+  alert(r.ok ? '✅ Сохранено' : '❌ ' + (await r.text()));
+}
+
+// ============================ INIT ============================
+loadReels();
+</script>
+</body>
+</html>

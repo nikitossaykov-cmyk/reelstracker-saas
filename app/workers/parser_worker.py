@@ -380,9 +380,10 @@ def process_one_job(db: Session) -> bool:
                         JobType.POST_TO_VK, JobType.POST_TO_YOUTUBE):
         from app.workers.posting_worker import process_post_to_instagram_job
         return process_post_to_instagram_job(db, job)
-    # OAUTH_REFRESH / REMAKE_VIDEO — приходят в следующих PR;
-    # пока помечаем как failed чтобы не зависали в RUNNING.
-    if job.job_type in (JobType.OAUTH_REFRESH, JobType.REMAKE_VIDEO):
+    if job.job_type == JobType.REMAKE_VIDEO:
+        from app.workers.hybrid_remake_worker import process_hybrid_remake_job
+        return process_hybrid_remake_job(db, job)
+    if job.job_type == JobType.OAUTH_REFRESH:
         fail_job(db, job, f"job_type {job.job_type.value} ещё не имплементирован")
         return True
 

@@ -222,6 +222,14 @@ def _extract_recipe_and_remake(
             logger.warning(f"auto-extract recipe failed reel #{reel.id}: {e}")
             return
 
+    # PR #21 — classify scene types so hybrid remake worker can decide
+    # which segments to regenerate vs keep_original vs text_template.
+    # Cheap (~$0.001/scene with gpt-4o-mini Vision).
+    try:
+        _ensure_scenes_classified(db, user, reel)
+    except Exception as e:
+        logger.warning(f"scene classification failed reel #{reel.id}: {e}")
+
     # Remake params из аккаунт-defaults
     from app.core.composer import RemakeParams
     p = acc.default_remake_params or {}
@@ -238,6 +246,17 @@ def _extract_recipe_and_remake(
     )
     try:
         from app.services.remake_service import create_remake_job
+        # PR #21 — если scenes классифицированы, использовать hybrid mode
+        import json as _json
+        scenes_data = []
+        try:
+            scenes_data = _json.loads(reel.scenes or "[]")
+        except Exception:
+            scenes_data = []
+        use_hybrid = (
+            len(scenes_data) > 1
+            and all("type" in s for s in scenes_data)
+        )
         gv = create_remake_job(
             db, user,
             recipe=recipe, source_reel=reel,
@@ -246,10 +265,46 @@ def _extract_recipe_and_remake(
             aspect_ratio="9:16",
             duration_seconds=int(p.get("duration_seconds") or 5),
             model=p.get("model"),
+            use_hybrid=use_hybrid,
         )
-        logger.info(f"🎬 auto-remake gv #{gv.id} for reel #{reel.id}")
+        logger.info(
+            f"🎬 auto-remake gv #{gv.id} for reel #{reel.id}"
+            f" (mode={'HYBRID' if use_hybrid else 'single-shot'})"
+        )
     except Exception as e:
         logger.warning(f"auto-remake create failed reel #{reel.id}: {e}")
+
+
+def _ensure_scenes_classified(db: Session, user: User, reel: Reel) -> None:
+    """Enrich reel.scenes JSON with per-scene type + reuse strategy
+    (PR #21). Idempotent — если все scenes уже имеют 'type', no-op.
+    Требует reel.media_storage_key + user.openai_api_key."""
+    import json as _json
+    try:
+        scenes = _json.loads(reel.scenes or "[]")
+    except Exception:
+        return
+    if not scenes or all("type" in s for s in scenes):
+        return
+    if not (reel.media_storage_key and user.openai_api_key):
+        return
+
+    import tempfile
+    from pathlib import Path
+    from app.core.storage import get_r2
+    from app.core.scene_classifier import classify_scenes
+    workdir = Path(tempfile.mkdtemp(prefix=f"sc_{reel.id}_"))
+    src = workdir / "src.mp4"
+    try:
+        r2 = get_r2()
+        r2._client.download_file(r2.bucket, reel.media_storage_key, str(src))
+        enriched = classify_scenes(src, scenes, user.openai_api_key)
+        reel.scenes = _json.dumps(enriched)
+        db.commit()
+        logger.info(f"📐 classified {len(enriched)} scenes for reel #{reel.id}")
+    finally:
+        try: src.unlink(missing_ok=True); workdir.rmdir()
+        except OSError: pass
 
 
 def _auto_publish(

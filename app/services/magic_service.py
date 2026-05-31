@@ -43,6 +43,38 @@ def _upload_local_to_r2(local: Path, user_id: int) -> tuple[str, int]:
     return key, len(data)
 
 
+def _extract_first_frame_and_upload(local_mp4: Path, user_id: int) -> Optional[str]:
+    """Извлечь первый кадр через ffmpeg → залить в R2 → вернуть public URL.
+
+    Используется как init_image для Runway image_to_video — это даёт
+    максимальное визуальное соответствие source-видео с самого старта
+    генерации. Без этого Runway фантазирует с нуля.
+    """
+    import subprocess
+    workdir = Path(tempfile.mkdtemp(prefix=f"frame_{user_id}_"))
+    out_jpg = workdir / "frame0.jpg"
+    try:
+        r = subprocess.run(
+            ["ffmpeg", "-y", "-loglevel", "error",
+             "-ss", "0.5", "-i", str(local_mp4),
+             "-frames:v", "1", "-q:v", "2",
+             "-vf", "scale=720:-2", str(out_jpg)],
+            capture_output=True, text=True, timeout=60, check=False,
+        )
+        if r.returncode != 0 or not out_jpg.exists():
+            logger.warning(f"ffmpeg first-frame failed: {r.stderr[:200]}")
+            return None
+        from app.core.storage import get_r2
+        r2 = get_r2()
+        key = f"users/{user_id}/magic_init/{uuid.uuid4().hex[:12]}.jpg"
+        with out_jpg.open("rb") as f:
+            r2.upload_bytes(key, f.read(), content_type="image/jpeg")
+        return r2.get_public_url(key)
+    finally:
+        try: out_jpg.unlink(missing_ok=True); workdir.rmdir()
+        except OSError: pass
+
+
 def start_magic_from_url(
     db: Session,
     user: User,
@@ -105,9 +137,16 @@ def start_magic_from_url(
     except DownloadError as e:
         raise ValueError(f"download failed: {e}")
 
-    # 2. R2 upload
+    # 2. R2 upload + extract first frame for image-to-video seed
+    init_image_url: Optional[str] = None
     try:
         key, size = _upload_local_to_r2(local_path, user.id)
+        try:
+            init_image_url = _extract_first_frame_and_upload(local_path, user.id)
+            if init_image_url:
+                logger.info(f"🪄 Magic: extracted first frame as init_image")
+        except Exception as e:
+            logger.warning(f"first-frame extraction failed (will fallback to text2video): {e}")
     finally:
         try: local_path.unlink(missing_ok=True); local_path.parent.rmdir()
         except OSError: pass
@@ -118,13 +157,17 @@ def start_magic_from_url(
                  .filter(InstagramAccount.user_id == user.id,
                          InstagramAccount.instagram_username == "__magic_mode__")
                  .first())
+    # Match remake duration to source (Runway gen4.5 max 10s).
+    src_dur = meta.get("duration") or duration_seconds
+    matched_duration = min(max(int(src_dur), 5), 10)
     remake_params = {
         k: v for k, v in {
             "brand": brand,
             "product_description": product_description,
             "extra_instructions": extra_instructions,
-            "duration_seconds": duration_seconds,
+            "duration_seconds": matched_duration,
             "model": model,
+            "init_image_url": init_image_url,  # PR #20: image-to-video seed
         }.items() if v is not None
     }
     if not magic_acc:

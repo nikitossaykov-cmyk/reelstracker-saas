@@ -27,6 +27,7 @@ class RemakeParams:
     outfit_description: Optional[str] = None        # "beige trench, gold hoop earrings"
     palette: Optional[str] = None                   # "warm muted, soft window light"
     extra_instructions: Optional[str] = None        # "ensure no text in scene"
+    init_image_url: Optional[str] = None            # PR #20: first frame of source for image-to-video
 
 
 _PLACEHOLDER_RE = re.compile(r"\[(PRODUCT|FACE|VOICE|BRAND|LOCATION|PALETTE|OUTFIT|INSTRUCTIONS)\]")

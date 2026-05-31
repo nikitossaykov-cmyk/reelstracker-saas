@@ -298,6 +298,7 @@ from app.api.posting_targets import router as posting_targets_router
 from app.api.posts import router as posts_router
 from app.api.voice import router as voice_router
 from app.api.magic import router as magic_router
+from app.api.account_insights import router as account_insights_router
 
 app.include_router(auth_router, prefix="/api/auth", tags=["Auth"])
 app.include_router(reels_router, prefix="/api/reels", tags=["Reels"])
@@ -314,6 +315,7 @@ app.include_router(posting_targets_router, prefix="/api/posting-targets", tags=[
 app.include_router(posts_router, prefix="/api/posts", tags=["Posts"])
 app.include_router(voice_router, prefix="/api/voice", tags=["Voice"])
 app.include_router(magic_router, prefix="/api/magic", tags=["Magic"])
+app.include_router(account_insights_router, prefix="/api/account-insights", tags=["AccountInsights"])
 
 # ─── Static Files ──────────────────────────────────────────
 

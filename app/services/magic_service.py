@@ -193,33 +193,59 @@ def start_magic_from_url(
         magic_acc.auto_remake_enabled = True
         db.commit()
 
-    # 4. Create Reel
-    reel = Reel(
-        user_id=user.id,
-        instagram_account_id=magic_acc.id,
-        title=(meta.get("title") or f"Magic from {meta.get('platform')}")[:255],
-        platform=meta.get("platform") or "instagram",
-        url=meta.get("webpage_url") or source_url,
-        enabled=False,  # не парсим заново
-        views=meta.get("view_count") or 0,
-        likes=meta.get("like_count") or 0,
-        comments=meta.get("comment_count") or 0,
-        shares=0,
-        author_username=meta.get("uploader"),
-        author_full_name=meta.get("uploader_id"),
-        thumbnail_url=meta.get("thumbnail"),
-        caption=meta.get("description"),
-        duration_seconds=meta.get("duration"),
-        media_storage_key=key,
-        media_size_bytes=size,
-        media_downloaded_at=datetime.utcnow(),
-        media_source_url=source_url,
-    )
-    db.add(reel); db.commit(); db.refresh(reel)
-    logger.info(f"🪄 Magic: created reel #{reel.id} from {source_url[:60]}")
+    # 4. Create или переиспользовать Reel (URL+user уникален —
+    # повторный Magic на ту же ссылку = новый ремейк с теми же source,
+    # но другими RemakeParams).
+    canonical_url = meta.get("webpage_url") or source_url
+    reel = (db.query(Reel)
+            .filter(Reel.user_id == user.id, Reel.url == canonical_url)
+            .first())
+    if reel:
+        # Обновим media (свежее), сбросим analysis чтобы заново
+        # extract recipe с новыми параметрами (если что-то изменилось)
+        reel.media_storage_key = key
+        reel.media_size_bytes = size
+        reel.media_downloaded_at = datetime.utcnow()
+        reel.media_source_url = source_url
+        # Если уже проанализирован — оставляем результаты analyze
+        # (recipe тоже не пересоздаём — просто запустим новый remake
+        # job через on_reel_analyzed hook). Если нет — analyze запустится.
+        db.commit()
+        logger.info(f"🪄 Magic: reused reel #{reel.id} from {source_url[:60]}")
+    else:
+        reel = Reel(
+            user_id=user.id,
+            instagram_account_id=magic_acc.id,
+            title=(meta.get("title") or f"Magic from {meta.get('platform')}")[:255],
+            platform=meta.get("platform") or "instagram",
+            url=canonical_url,
+            enabled=False,
+            views=meta.get("view_count") or 0,
+            likes=meta.get("like_count") or 0,
+            comments=meta.get("comment_count") or 0,
+            shares=0,
+            author_username=meta.get("uploader"),
+            author_full_name=meta.get("uploader_id"),
+            thumbnail_url=meta.get("thumbnail"),
+            caption=meta.get("description"),
+            duration_seconds=meta.get("duration"),
+            media_storage_key=key,
+            media_size_bytes=size,
+            media_downloaded_at=datetime.utcnow(),
+            media_source_url=source_url,
+        )
+        db.add(reel); db.commit(); db.refresh(reel)
+        logger.info(f"🪄 Magic: created reel #{reel.id} from {source_url[:60]}")
 
-    # 5. Enqueue ANALYZE_REEL — on_reel_analyzed hook сделает chain
-    create_analyze_job(db, user, reel)
+    # 5. Если уже проанализирован — дёргаем on_reel_analyzed напрямую
+    # (extract recipe + create remake job). Иначе — analyze, hook сам
+    # запустит chain после.
+    if reel.analyzed_at:
+        from app.services.auto_pipeline_service import on_reel_analyzed
+        on_reel_analyzed(db, reel)
+        logger.info(f"🪄 Magic: reel #{reel.id} already analyzed, triggered remake directly")
+    else:
+        create_analyze_job(db, user, reel)
 
     return {
         "reel_id": reel.id,

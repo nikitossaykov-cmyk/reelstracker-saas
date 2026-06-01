@@ -32,6 +32,7 @@ RULES: list[tuple[str, frozenset[str], int, int]] = [
     ("/api/magic/from-url",             frozenset({"POST"}), 5,  60),
     ("/api/magic/from-upload",          frozenset({"POST"}), 5,  60),
     ("/api/account-insights/analyze",   frozenset({"POST"}), 5,  60),
+    ("/api/forge/start",                frozenset({"POST"}), 5,  60),
     ("/api/parse",                      frozenset({"POST"}), 2,  60),
 ]
 # Default safety net for everything else under /api/

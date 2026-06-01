@@ -40,6 +40,3 @@ openai==1.30.0
 
 # Magic Mode — yt-dlp to grab MP4 from IG/TT/YT URLs without Apify
 yt-dlp==2026.3.17
-
-# Rate limiting (per-IP, in-memory) — security PR P1
-slowapi==0.1.9

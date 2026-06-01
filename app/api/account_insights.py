@@ -8,10 +8,9 @@ Account Insights API — анализ всего аккаунта конкуре
 
 from typing import Optional, List
 from pydantic import BaseModel, Field
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.deps import get_current_user
-from app.core.rate_limit import limiter, EXPENSIVE
 from app.models.user import User
 
 router = APIRouter()
@@ -40,9 +39,7 @@ class AccountInsightResponse(BaseModel):
 
 
 @router.post("/analyze", response_model=AccountInsightResponse)
-@limiter.limit(EXPENSIVE)
 def analyze_account_endpoint(
-    request: Request,
     data: AccountAnalyzeRequest,
     current_user: User = Depends(get_current_user),
 ):

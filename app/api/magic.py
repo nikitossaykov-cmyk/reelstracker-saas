@@ -10,13 +10,12 @@ from pathlib import Path
 import tempfile
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status, File, UploadFile, Form, Body
+from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Form, Body
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 
 from app.database import get_db
 from app.api.deps import get_current_user
-from app.core.rate_limit import limiter, EXPENSIVE
 from app.models.user import User
 from app.models.generation import VideoProvider
 
@@ -51,9 +50,7 @@ class MagicStatusResponse(BaseModel):
 
 
 @router.post("/from-url", response_model=MagicStartResponse, status_code=status.HTTP_202_ACCEPTED)
-@limiter.limit(EXPENSIVE)
 def magic_from_url(
-    request: Request,
     data: MagicFromUrlRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -92,9 +89,7 @@ def magic_from_url(
 
 
 @router.post("/from-upload", response_model=MagicStartResponse, status_code=status.HTTP_202_ACCEPTED)
-@limiter.limit(EXPENSIVE)
 async def magic_from_upload(
-    request: Request,
     video: UploadFile = File(...),
     brand: Optional[str] = Form(None),
     product_description: Optional[str] = Form(None),

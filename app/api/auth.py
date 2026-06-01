@@ -2,12 +2,11 @@
 API авторизации: регистрация, логин, обновление токена, профиль
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.api.deps import get_current_user
-from app.core.rate_limit import limiter, AUTH, REFRESH
 from app.models.user import User
 from app.schemas.user import UserCreate, UserLogin, UserResponse, Token, TokenRefresh
 from app.services.auth_service import (
@@ -42,8 +41,7 @@ def _make_tokens(user: User) -> Token:
 
 
 @router.post("/register", response_model=Token, status_code=status.HTTP_201_CREATED)
-@limiter.limit(AUTH)
-def register(request: Request, data: UserCreate, db: Session = Depends(get_db)):
+def register(data: UserCreate, db: Session = Depends(get_db)):
     """Регистрация нового пользователя"""
 
     # Проверяем, не занят ли email
@@ -58,8 +56,7 @@ def register(request: Request, data: UserCreate, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=Token)
-@limiter.limit(AUTH)
-def login(request: Request, data: UserLogin, db: Session = Depends(get_db)):
+def login(data: UserLogin, db: Session = Depends(get_db)):
     """Вход по email + пароль"""
 
     user = authenticate_user(db, data.email, data.password)
@@ -73,8 +70,7 @@ def login(request: Request, data: UserLogin, db: Session = Depends(get_db)):
 
 
 @router.post("/refresh", response_model=Token)
-@limiter.limit(REFRESH)
-def refresh_token(request: Request, data: TokenRefresh, db: Session = Depends(get_db)):
+def refresh_token(data: TokenRefresh, db: Session = Depends(get_db)):
     """Обновление access токена по refresh токену"""
 
     payload = decode_token(data.refresh_token)

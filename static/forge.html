@@ -59,9 +59,25 @@
     </div>
   </div>
 
+  <!-- STRATEGY TABS -->
+  <div class="flex gap-1 mb-3" id="strategy-tabs">
+    <button data-strategy="A" class="strat-tab flex-1 py-3 rounded-t-lg text-sm font-medium border-b-2 border-purple-500 bg-purple-900/20">
+      <div>🎬 A · Magic</div>
+      <div class="text-[10px] text-gray-400 mt-0.5">полный ремейк через Runway · ~$0.20 · 3-7 мин</div>
+    </button>
+    <button data-strategy="B" class="strat-tab flex-1 py-3 rounded-t-lg text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-white">
+      <div>🔀 B · Уникализатор</div>
+      <div class="text-[10px] text-gray-500 mt-0.5">оригинал + мутации · ~$0.01 · ~30 сек</div>
+    </button>
+    <button data-strategy="C" class="strat-tab flex-1 py-3 rounded-t-lg text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-white">
+      <div>🎨 C · Frame edit</div>
+      <div class="text-[10px] text-gray-500 mt-0.5">inpaint ключевых кадров · ~$1.50 · 5-10 мин</div>
+    </button>
+  </div>
+
   <!-- INPUT -->
   <section id="input-section" class="glass rounded-2xl p-6 mb-6">
-    <!-- 1. Source: URL or upload -->
+    <!-- 1. Source: URL or upload (общий для всех стратегий) -->
     <div class="mb-5">
       <label class="block text-sm text-gray-300 mb-2 font-medium">1️⃣ Ссылка на чужое виральное видео или MP4-файл</label>
       <input id="source-url" type="url" placeholder="https://www.tiktok.com/@..."
@@ -73,8 +89,10 @@
       </div>
     </div>
 
-    <!-- 2. Brand params -->
-    <div class="mb-5">
+    <!-- 2. Per-strategy panes -->
+
+    <!-- TAB A: Magic (current behaviour) -->
+    <div id="tab-A" class="strat-pane mb-5">
       <div class="flex items-baseline justify-between mb-2">
         <label class="text-sm text-gray-300 font-medium">2️⃣ Что поменять в ремейке (необязательно)</label>
         <button type="button" onclick="document.getElementById('what-changes').classList.toggle('hidden')"
@@ -112,12 +130,44 @@
       </div>
     </div>
 
+    <!-- TAB B: Uniqualizer -->
+    <div id="tab-B" class="strat-pane mb-5 hidden">
+      <div class="mb-3 p-3 bg-purple-900/15 border border-purple-500/20 rounded text-xs text-gray-300">
+        💡 <strong>Без LLM-генерации.</strong> Берём оригинал → ffmpeg-мутации видео и звука + LLM перепишет субтитры (тот же тайминг, другой текст). Платформы не матчат как дубль.
+      </div>
+      <div class="space-y-2">
+        <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="b_mutate_video" checked /> 🎞 Видео-мутации (zoom 1.02, speed 0.97, crop, mirror)</label>
+        <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="b_mutate_audio" checked /> 🔊 Звук (pitch ±2%, лёгкий noise)</label>
+        <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="b_rewrite_subs" checked /> 📝 Перезапись субтитров через LLM (новый текст, тот же тайминг)</label>
+      </div>
+      <div class="mt-3 p-2 bg-yellow-900/20 border border-yellow-500/30 rounded text-xs text-yellow-200">
+        ⚠️ B-стратегия ещё не задеплоена. Этот пейн готов, бэк подключим в PR-2.
+      </div>
+    </div>
+
+    <!-- TAB C: Frame edit -->
+    <div id="tab-C" class="strat-pane mb-5 hidden">
+      <div class="mb-3 p-3 bg-purple-900/15 border border-purple-500/20 rounded text-xs text-gray-300">
+        💡 <strong>Frame inpaint.</strong> Берём N ключевых кадров, GPT-image-1 меняет бренд/лицо/продукт сохраняя позу и движение. Между кадрами интерполяция. Субтитры не двигаются.
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <input name="brand" placeholder="🏷 Бренд" class="bg-black/40 border border-white/10 px-3 py-2 rounded text-sm" />
+        <input name="c_keyframe_count" type="number" value="8" min="3" max="30" placeholder="Кадров для inpaint" title="Сколько ключевых кадров обрабатывать. Больше = качественнее, дороже." class="bg-black/40 border border-white/10 px-3 py-2 rounded text-sm" />
+        <input name="product_description" placeholder="📦 Продукт" class="bg-black/40 border border-white/10 px-3 py-2 rounded text-sm col-span-2" />
+        <input name="face_description" placeholder="👤 Лицо" class="bg-black/40 border border-white/10 px-3 py-2 rounded text-sm" />
+        <input name="outfit_description" placeholder="👗 Одежда" class="bg-black/40 border border-white/10 px-3 py-2 rounded text-sm" />
+      </div>
+      <div class="mt-3 p-2 bg-yellow-900/20 border border-yellow-500/30 rounded text-xs text-yellow-200">
+        ⚠️ C-стратегия ещё не задеплоена. Этот пейн готов, бэк подключим в PR-4.
+      </div>
+    </div>
+
     <!-- 3. Button -->
-    <button id="go-btn" onclick="startMagic()"
+    <button id="go-btn" onclick="startForge()"
             class="btn-magic w-full py-4 rounded-xl text-lg font-bold text-white">
       🎬 Сделать ремейк
     </button>
-    <div class="text-center text-xs text-gray-500 mt-2">~3-7 минут · ~$0.20 за ролик через Runway gen4.5</div>
+    <div id="estimate-line" class="text-center text-xs text-gray-500 mt-2">стратегия A · ~3-7 минут · ~$0.20</div>
   </section>
 
   <!-- PROGRESS -->
@@ -235,44 +285,110 @@ function handleFile(f) {
   document.getElementById('source-url').value = ''; // clear url if file picked
 }
 
+// ─── Strategy tabs wiring ──────────────────────────────────
+let activeStrategy = 'A';
+
+const STRATEGY_META = {
+  A: { label: '🎬 A · Magic', est: '~3-7 мин · ~$0.20', cost: 0.20 },
+  B: { label: '🔀 B · Уникализатор', est: '~30 сек · ~$0.01', cost: 0.01 },
+  C: { label: '🎨 C · Frame edit', est: '~5-10 мин · ~$1.50', cost: 1.50 },
+};
+
+document.querySelectorAll('.strat-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    activeStrategy = btn.dataset.strategy;
+    document.querySelectorAll('.strat-tab').forEach(b => {
+      const on = b.dataset.strategy === activeStrategy;
+      b.classList.toggle('border-purple-500', on);
+      b.classList.toggle('border-transparent', !on);
+      b.classList.toggle('bg-purple-900/20', on);
+      b.classList.toggle('text-gray-400', !on);
+    });
+    document.querySelectorAll('.strat-pane').forEach(p => p.classList.add('hidden'));
+    document.getElementById(`tab-${activeStrategy}`).classList.remove('hidden');
+    document.getElementById('estimate-line').textContent =
+      `стратегия ${activeStrategy} · ${STRATEGY_META[activeStrategy].est}`;
+  });
+});
+
 function getParams() {
-  const sec = document.getElementById('input-section');
-  const v = (n) => sec.querySelector(`[name=${n}]`).value.trim() || null;
-  // Все поля идут в extra_instructions как одна стрelka — backend
-  // подставит их в canonical_prompt через [BRAND]/[PRODUCT]/etc.
-  const parts = [];
-  if (v('face_description')) parts.push(`face: ${v('face_description')}`);
-  if (v('voice_description')) parts.push(`voice: ${v('voice_description')}`);
-  if (v('outfit_description')) parts.push(`outfit: ${v('outfit_description')}`);
-  if (v('location_description')) parts.push(`location: ${v('location_description')}`);
-  if (v('palette')) parts.push(`palette: ${v('palette')}`);
-  if (v('extra_instructions')) parts.push(v('extra_instructions'));
-  return {
-    brand: v('brand'),
-    product_description: v('product_description'),
-    extra_instructions: parts.length ? parts.join(' | ') : null,
-    model: v('model') || 'gen4.5',
-    duration_seconds: 5,
+  // Read from the *active* tab pane only (different tabs may share name=).
+  const pane = document.getElementById(`tab-${activeStrategy}`);
+  const v = (n) => {
+    const el = pane.querySelector(`[name="${n}"]`);
+    return el ? (el.value || '').trim() || null : null;
   };
+  const c = (n) => {
+    const el = pane.querySelector(`[name="${n}"]`);
+    return el ? !!el.checked : false;
+  };
+
+  if (activeStrategy === 'A') {
+    const parts = [];
+    if (v('face_description')) parts.push(`face: ${v('face_description')}`);
+    if (v('voice_description')) parts.push(`voice: ${v('voice_description')}`);
+    if (v('outfit_description')) parts.push(`outfit: ${v('outfit_description')}`);
+    if (v('location_description')) parts.push(`location: ${v('location_description')}`);
+    if (v('palette')) parts.push(`palette: ${v('palette')}`);
+    if (v('extra_instructions')) parts.push(v('extra_instructions'));
+    return {
+      brand: v('brand'),
+      product_description: v('product_description'),
+      extra_instructions: parts.length ? parts.join(' | ') : null,
+      model: v('model') || 'gen4.5',
+      duration_seconds: 5,
+    };
+  }
+  if (activeStrategy === 'B') {
+    return {
+      b_mutate_video: c('b_mutate_video'),
+      b_mutate_audio: c('b_mutate_audio'),
+      b_rewrite_subs: c('b_rewrite_subs'),
+    };
+  }
+  if (activeStrategy === 'C') {
+    const parts = [];
+    if (v('face_description')) parts.push(`face: ${v('face_description')}`);
+    if (v('outfit_description')) parts.push(`outfit: ${v('outfit_description')}`);
+    return {
+      brand: v('brand'),
+      product_description: v('product_description'),
+      extra_instructions: parts.length ? parts.join(' | ') : null,
+      c_keyframe_count: parseInt(v('c_keyframe_count') || '8', 10),
+    };
+  }
+  return {};
 }
 
-async function startMagic() {
+async function startForge() {
   const url = document.getElementById('source-url').value.trim();
   if (!url && !uploadedFile) { alert('Дай ссылку на видео или выбери файл'); return; }
+
+  // Magic upload-mode currently only supports strategy A (uses /api/magic/from-upload).
+  if (uploadedFile && activeStrategy !== 'A') {
+    alert('Загрузка MP4 пока работает только для стратегии A. Для B/C дай URL.');
+    return;
+  }
+
   const btn = document.getElementById('go-btn');
   btn.disabled = true; btn.textContent = '⏳ Запускаю...';
 
   try {
     let resp;
     if (uploadedFile) {
+      // strategy A upload path — legacy /api/magic/from-upload
       const fd = new FormData();
       fd.append('video', uploadedFile);
       const p = getParams();
-      for (const [k, v] of Object.entries(p)) if (v) fd.append(k, v);
+      for (const [k, v] of Object.entries(p)) if (v != null) fd.append(k, v);
       resp = await authFetch('/api/magic/from-upload', { method: 'POST', body: fd });
     } else {
-      const body = { source_url: url, ...getParams() };
-      resp = await authFetch('/api/magic/from-url', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const body = { strategy: activeStrategy, source_url: url, ...getParams() };
+      resp = await authFetch('/api/forge/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
     }
     if (!resp.ok) {
       const e = await resp.text();
@@ -281,6 +397,7 @@ async function startMagic() {
     const data = await resp.json();
     currentReelId = data.reel_id;
     document.getElementById('input-section').classList.add('hidden');
+    document.getElementById('strategy-tabs').classList.add('hidden');
     document.getElementById('progress-section').classList.remove('hidden');
     document.querySelector('[data-stage="uploaded"]').classList.add('done', 'active');
     document.querySelector('[data-stage="analyzing"]').classList.add('active');

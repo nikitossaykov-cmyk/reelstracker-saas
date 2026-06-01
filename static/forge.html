@@ -458,6 +458,85 @@ async function loadRecent() {
   `).join('');
 }
 
+// ─── Account Insights modal ────────────────────────────────
+window.openAccountInsights = function() {
+  document.getElementById('ai-modal').classList.remove('hidden');
+  document.getElementById('ai-input').focus();
+};
+
+window.runAccountAnalyze = async function() {
+  const account = document.getElementById('ai-input').value.trim();
+  const maxReels = parseInt(document.getElementById('ai-max').value || '10', 10);
+  const out = document.getElementById('ai-result');
+  const btn = document.getElementById('ai-go');
+  if (!account) { out.innerHTML = '<div class="text-red-400">Введи @username или ссылку</div>'; return; }
+  btn.disabled = true; btn.textContent = '⏳';
+  out.innerHTML = '<div class="text-gray-400">Скачиваю metadata + LLM-анализ… ~30-60 сек</div>';
+  try {
+    const r = await authFetch('/api/account-insights/analyze', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({account, max_reels: maxReels}),
+    });
+    const body = await r.json();
+    if (!r.ok) {
+      out.innerHTML = `<div class="text-red-400">${r.status}: ${body.detail || JSON.stringify(body)}</div>`;
+      return;
+    }
+    renderAccountInsights(body);
+  } catch (e) {
+    out.innerHTML = `<div class="text-red-400">Ошибка: ${e.message}</div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Разбор';
+  }
+};
+
+function renderAccountInsights(d) {
+  const ins = d.insights || {};
+  const reels = d.reels || [];
+  const perf = ins.performance || {};
+  const li = (arr) => (arr || []).map(x => `<li>${escapeHtml(String(x))}</li>`).join('');
+  const safe = (v) => v == null ? '<span class="text-gray-500">—</span>' : escapeHtml(String(v));
+  const reelRows = reels.map(r => `
+    <div class="flex items-center gap-3 p-2 border-b border-white/5">
+      ${r.thumbnail ? `<img src="${r.thumbnail}" class="w-12 h-16 object-cover rounded" />` : '<div class="w-12 h-16 bg-black/40 rounded"></div>'}
+      <div class="flex-1 min-w-0">
+        <div class="text-xs truncate">${escapeHtml(r.title || '(без названия)')}</div>
+        <div class="text-xs text-gray-500">${r.view_count ? r.view_count.toLocaleString() + ' views' : ''} · ${r.duration ? Math.round(r.duration)+'s' : ''}</div>
+      </div>
+      <button onclick='useForMagic(${JSON.stringify(r.url || "")})' class="btn-magic text-xs px-2 py-1 rounded" title="Подставить в Magic">🎬</button>
+    </div>
+  `).join('');
+  document.getElementById('ai-result').innerHTML = `
+    <div class="space-y-3">
+      <div class="grid grid-cols-2 gap-2 text-xs">
+        <div><span class="text-gray-400">Ниша:</span> ${safe(ins.niche)}</div>
+        <div><span class="text-gray-400">Язык:</span> ${safe(ins.language)}</div>
+        <div class="col-span-2"><span class="text-gray-400">Персона:</span> ${safe(ins.creator_persona)}</div>
+        <div class="col-span-2"><span class="text-gray-400">Формат:</span> ${safe(ins.format_summary)}</div>
+        <div><span class="text-gray-400">Средняя длина:</span> ${safe(ins.avg_duration_sec)} сек</div>
+        <div><span class="text-gray-400">Каденс:</span> ${safe(ins.publishing_cadence)}</div>
+      </div>
+      ${ins.common_hooks?.length ? `<div><div class="text-gray-400 text-xs mb-1">Хуки:</div><ul class="text-xs list-disc pl-5">${li(ins.common_hooks)}</ul></div>` : ''}
+      ${ins.recurring_visual_motifs?.length ? `<div><div class="text-gray-400 text-xs mb-1">Визуальные мотивы:</div><ul class="text-xs list-disc pl-5">${li(ins.recurring_visual_motifs)}</ul></div>` : ''}
+      ${perf.top_view_count ? `<div class="text-xs"><span class="text-gray-400">Топ-просмотры:</span> ${perf.top_view_count.toLocaleString()} · <span class="text-gray-400">медиана:</span> ${(perf.median_view_count||0).toLocaleString()}</div>` : ''}
+      ${ins.remake_recommendation ? `<div class="p-2 bg-purple-900/20 border border-purple-500/30 rounded text-xs"><strong>Что ремейкать:</strong> ${escapeHtml(String(ins.remake_recommendation))}</div>` : ''}
+      ${reelRows ? `<div><div class="text-gray-400 text-xs mb-1 mt-2">Топ-${reels.length} рилсов (клик 🎬 → подставит в Magic):</div><div class="bg-black/30 rounded">${reelRows}</div></div>` : ''}
+    </div>
+  `;
+}
+
+window.useForMagic = function(url) {
+  if (!url) return;
+  document.getElementById('source-url').value = url;
+  document.getElementById('ai-modal').classList.add('hidden');
+  document.getElementById('input-section').scrollIntoView({behavior: 'smooth'});
+};
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
 loadRecent();
 </script>
 </body>

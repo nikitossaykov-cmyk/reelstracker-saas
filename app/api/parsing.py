@@ -3,11 +3,12 @@ API парсинга: постановка в очередь, статус
 """
 
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.api.deps import get_current_user
+from app.core.rate_limit import limiter, PARSE
 from app.models.user import User
 from app.services.reel_service import get_reel_by_id
 from app.services.parsing_service import (
@@ -20,7 +21,9 @@ router = APIRouter()
 
 
 @router.post("")
+@limiter.limit(PARSE)
 def start_parsing(
+    request: Request,
     reel_id: Optional[int] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),

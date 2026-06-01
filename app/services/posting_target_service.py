@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.models.user import User
 from app.models.generation import PostingTarget, PostingPlatform
+from app.core.token_crypto import encrypt_token, decrypt_token, is_encrypted
 
 logger = logging.getLogger(__name__)
 
@@ -27,19 +28,13 @@ def create_posting_target(
     refresh_token: Optional[str] = None,
     default_caption_template: Optional[str] = None,
 ) -> PostingTarget:
-    """Создать posting target.
-
-    TODO в следующих PR: шифрование access_token через Fernet с ключом
-    из env. Сейчас храним как есть (Postgres-side TDE / Railway encrypted
-    storage уже даёт RGE-encryption-at-rest).
-    """
     pt = PostingTarget(
         user_id=user.id,
         platform=platform,
         platform_account_id=platform_account_id,
         platform_username=platform_username,
-        access_token_encrypted=access_token,  # TODO: encrypt before store
-        refresh_token_encrypted=refresh_token,
+        access_token_encrypted=encrypt_token(access_token),
+        refresh_token_encrypted=encrypt_token(refresh_token),
         default_caption_template=default_caption_template,
     )
     db.add(pt)
@@ -70,5 +65,32 @@ def delete_target(db: Session, target: PostingTarget) -> None:
 
 
 def get_access_token(target: PostingTarget) -> str:
-    """Расшифровать access_token (пока no-op — TODO Fernet)."""
-    return target.access_token_encrypted or ""
+    return decrypt_token(target.access_token_encrypted) or ""
+
+
+def get_refresh_token(target: PostingTarget) -> str:
+    return decrypt_token(target.refresh_token_encrypted) or ""
+
+
+def migrate_legacy_plaintext_tokens(db: Session) -> int:
+    """One-shot: encrypt any PostingTarget rows still holding plaintext.
+
+    Detect via Fernet prefix. Safe to call repeatedly — idempotent.
+    Returns count of rows rewritten.
+    """
+    rows = db.query(PostingTarget).all()
+    n = 0
+    for r in rows:
+        changed = False
+        if r.access_token_encrypted and not is_encrypted(r.access_token_encrypted):
+            r.access_token_encrypted = encrypt_token(r.access_token_encrypted)
+            changed = True
+        if r.refresh_token_encrypted and not is_encrypted(r.refresh_token_encrypted):
+            r.refresh_token_encrypted = encrypt_token(r.refresh_token_encrypted)
+            changed = True
+        if changed:
+            n += 1
+    if n:
+        db.commit()
+        logger.info(f"migrate_legacy_plaintext_tokens: re-encrypted {n} rows")
+    return n

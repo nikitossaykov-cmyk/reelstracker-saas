@@ -254,6 +254,16 @@ async def lifespan(app: FastAPI):
     # Одноразовая чистка дубликатных позиций (instagram_account_id не трогаем)
     cleanup_duplicate_reels()
 
+    # Idempotent: encrypt any plaintext OAuth tokens left from pre-Fernet rows.
+    # Silently skipped if OAUTH_TOKEN_FERNET_KEY not set (first deploy).
+    try:
+        from app.database import SessionLocal
+        from app.services.posting_target_service import migrate_legacy_plaintext_tokens
+        with SessionLocal() as _db:
+            migrate_legacy_plaintext_tokens(_db)
+    except Exception as e:
+        logger.warning(f"OAuth-token re-encryption skipped: {e}")
+
     # Запуск фонового парсера и шедулера
     from app.workers.scheduler import start_scheduler_thread, start_worker_thread
     start_scheduler_thread(check_interval=30)

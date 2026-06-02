@@ -67,3 +67,46 @@ def transcribe_audio(
     text = response if isinstance(response, str) else getattr(response, "text", "")
     logger.info(f"transcribed {path.name}: {len(text)} chars")
     return text.strip()
+
+
+def transcribe_audio_segments(
+    media_path: str | Path,
+    openai_api_key: str,
+    language: Optional[str] = None,
+    timeout: int = 120,
+) -> list[dict]:
+    """Transcribe with sentence-level timestamps.
+
+    Returns: list of {start: float, end: float, text: str}.
+    Used by Strategy B (uniqualizer) for subtitle rewrite + burn-in.
+    """
+    if not openai_api_key:
+        raise TranscribeError("openai_api_key пуст")
+    path = Path(media_path)
+    if not path.exists():
+        raise TranscribeError(f"media file not found: {path}")
+    size_mb = path.stat().st_size / 1024 / 1024
+    if size_mb > 25:
+        raise TranscribeError(f"{size_mb:.1f}MB > Whisper-1 25MB cap")
+    try:
+        from openai import OpenAI
+    except ImportError as e:
+        raise TranscribeError(f"openai SDK: {e}")
+    client = OpenAI(api_key=openai_api_key, timeout=timeout)
+    try:
+        with path.open("rb") as f:
+            resp = client.audio.transcriptions.create(
+                model="whisper-1", file=f, language=language,
+                response_format="verbose_json",
+            )
+    except Exception as e:
+        raise TranscribeError(f"OpenAI {type(e).__name__}: {str(e)[:300]}")
+    segs = []
+    for s in (getattr(resp, "segments", None) or []):
+        segs.append({
+            "start": float(getattr(s, "start", 0) or 0),
+            "end": float(getattr(s, "end", 0) or 0),
+            "text": (getattr(s, "text", "") or "").strip(),
+        })
+    logger.info(f"transcribed {path.name}: {len(segs)} segments")
+    return segs

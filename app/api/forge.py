@@ -58,9 +58,12 @@ class ForgeStartResponse(BaseModel):
     reel_id: Optional[int] = None
     magic_account_id: Optional[int] = None
     job_id: Optional[int] = None
+    gv_id: Optional[int] = None
+    media_url: Optional[str] = None  # B returns it directly (sync); A polls
     source_title: Optional[str] = None
     next_step: str
     cost_estimate_usd: float
+    cost_actual_usd: Optional[float] = None  # B fills this; A/C estimate-only
 
 
 def _estimate_cost(strategy: Strategy, duration_seconds: int, model: Optional[str]) -> float:
@@ -116,9 +119,27 @@ def forge_start(
         )
 
     if data.strategy == "B":
-        raise HTTPException(
-            status.HTTP_501_NOT_IMPLEMENTED,
-            detail="Strategy B (uniqualizer) ships in next PR. Use strategy=A for now.",
+        from app.services.uniqualizer_b_service import run_strategy_b, StrategyBError
+        try:
+            result = run_strategy_b(
+                db, current_user,
+                source_url=data.source_url,
+                mutate_video=data.b_mutate_video,
+                mutate_audio=data.b_mutate_audio,
+                rewrite_subs=data.b_rewrite_subs,
+                brand=data.brand,
+                product_description=data.product_description,
+            )
+        except StrategyBError as e:
+            raise HTTPException(502, detail=f"strategy B: {e}")
+        return ForgeStartResponse(
+            strategy="B",
+            gv_id=result["gv_id"],
+            media_url=result["media_url"],
+            source_title=result.get("source_title"),
+            next_step="ready — media_url is the final video",
+            cost_estimate_usd=cost,
+            cost_actual_usd=result["cost_usd"],
         )
 
     if data.strategy == "C":

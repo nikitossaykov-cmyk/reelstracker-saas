@@ -143,9 +143,26 @@ def forge_start(
         )
 
     if data.strategy == "C":
-        raise HTTPException(
-            status.HTTP_501_NOT_IMPLEMENTED,
-            detail="Strategy C (frame-edit) ships after B. Use strategy=A for now.",
+        from app.services.frame_inpaint_c_service import run_strategy_c, StrategyCError
+        try:
+            result = run_strategy_c(
+                db, current_user,
+                source_url=data.source_url,
+                brand=data.brand,
+                product_description=data.product_description,
+                extra_instructions=data.extra_instructions,
+                keyframe_count=data.c_keyframe_count,
+            )
+        except StrategyCError as e:
+            raise HTTPException(502, detail=f"strategy C: {e}")
+        return ForgeStartResponse(
+            strategy="C",
+            gv_id=result["gv_id"],
+            media_url=result["media_url"],
+            source_title=result.get("source_title"),
+            next_step="ready — media_url is the final video",
+            cost_estimate_usd=cost,
+            cost_actual_usd=result["cost_usd"],
         )
 
     raise HTTPException(400, detail=f"unknown strategy: {data.strategy}")

@@ -152,13 +152,14 @@
       </div>
       <div class="grid grid-cols-2 gap-3">
         <input name="brand" placeholder="🏷 Бренд" class="bg-black/40 border border-white/10 px-3 py-2 rounded text-sm" />
-        <input name="c_keyframe_count" type="number" value="8" min="3" max="30" placeholder="Кадров для inpaint" title="Сколько ключевых кадров обрабатывать. Больше = качественнее, дороже." class="bg-black/40 border border-white/10 px-3 py-2 rounded text-sm" />
+        <input name="c_keyframe_count" type="number" value="5" min="3" max="30" placeholder="Кадров для inpaint" title="Сколько ключевых кадров обрабатывать. 5 = ~$0.20 и 2-3 мин. 10 = ~$0.41 и 4-5 мин." class="bg-black/40 border border-white/10 px-3 py-2 rounded text-sm" />
         <input name="product_description" placeholder="📦 Продукт" class="bg-black/40 border border-white/10 px-3 py-2 rounded text-sm col-span-2" />
         <input name="face_description" placeholder="👤 Лицо" class="bg-black/40 border border-white/10 px-3 py-2 rounded text-sm" />
         <input name="outfit_description" placeholder="👗 Одежда" class="bg-black/40 border border-white/10 px-3 py-2 rounded text-sm" />
       </div>
-      <div class="mt-3 p-2 bg-yellow-900/20 border border-yellow-500/30 rounded text-xs text-yellow-200">
-        ⚠️ C-стратегия ещё не задеплоена. Этот пейн готов, бэк подключим в PR-4.
+      <div class="mt-3 p-2 bg-green-900/20 border border-green-500/30 rounded text-xs text-green-200">
+        ✅ C MVP: slideshow из N edited кадров с оригинальным звуком. Sync, ~2-5 мин для N=5. Требует openai_api_key.
+        Качество дискретное (без интерполяции — будет видно «переходы» между кадрами), но субтитры точно не сдвинутся.
       </div>
     </div>
 
@@ -398,9 +399,9 @@ async function startForge() {
     document.getElementById('input-section').classList.add('hidden');
     document.getElementById('strategy-tabs').classList.add('hidden');
 
-    // Strategy B returns the final media_url synchronously — no polling needed.
-    if (activeStrategy === 'B' && data.media_url) {
-      showStrategyBResult(data);
+    // Strategy B and C return the final media_url synchronously — no polling.
+    if ((activeStrategy === 'B' || activeStrategy === 'C') && data.media_url) {
+      showStrategyBResult(data);  // same renderer works for both
       return;
     }
 

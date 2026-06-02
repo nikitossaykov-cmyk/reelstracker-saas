@@ -49,8 +49,9 @@ class ForgeStartRequest(BaseModel):
     b_mutate_video: bool = True
     b_mutate_audio: bool = True
     b_rewrite_subs: bool = True
-    # C-specific (frame edit) — placeholder, PR-4 wires them up
-    c_keyframe_count: int = Field(8, ge=3, le=30)
+    # C-specific (frame edit)
+    c_keyframe_count: int = Field(5, ge=3, le=30)
+    c_smooth_transitions: bool = False  # PR-6: Runway image_to_video between keyframes
 
 
 class ForgeStartResponse(BaseModel):
@@ -66,7 +67,8 @@ class ForgeStartResponse(BaseModel):
     cost_actual_usd: Optional[float] = None  # B fills this; A/C estimate-only
 
 
-def _estimate_cost(strategy: Strategy, duration_seconds: int, model: Optional[str]) -> float:
+def _estimate_cost(strategy: Strategy, duration_seconds: int, model: Optional[str],
+                   c_keyframe_count: int = 5, c_smooth: bool = False) -> float:
     if strategy == "A":
         # Runway gen4.5: ~$0.05/sec, assume 4 scenes × duration sec each
         per_sec = {"gen4.5": 0.05, "gen4_turbo": 0.05, "veo3.1_fast": 0.40}.get(
@@ -76,8 +78,11 @@ def _estimate_cost(strategy: Strategy, duration_seconds: int, model: Optional[st
     if strategy == "B":
         return 0.01  # Whisper + LLM rewrite only
     if strategy == "C":
-        # GPT-image-1 inpaint: ~$0.04/image × ~10 keyframes + Whisper
-        return 0.50
+        base = 0.04 * c_keyframe_count + 0.01  # gpt-image-1 inpaint
+        if c_smooth:
+            # (N-1) runway segments × ≥5s × $0.05/s
+            base += (c_keyframe_count - 1) * 5 * 0.05
+        return round(base, 3)
     return 0.0
 
 
@@ -88,7 +93,11 @@ def forge_start(
     db: Session = Depends(get_db),
 ):
     """Single entrypoint for all 3 remake strategies. UI sends `strategy=A|B|C`."""
-    cost = _estimate_cost(data.strategy, data.duration_seconds, data.model)
+    cost = _estimate_cost(
+        data.strategy, data.duration_seconds, data.model,
+        c_keyframe_count=data.c_keyframe_count,
+        c_smooth=data.c_smooth_transitions,
+    )
 
     if data.strategy == "A":
         if not current_user.runway_api_key:
@@ -152,6 +161,7 @@ def forge_start(
                 product_description=data.product_description,
                 extra_instructions=data.extra_instructions,
                 keyframe_count=data.c_keyframe_count,
+                smooth_transitions=data.c_smooth_transitions,
             )
         except StrategyCError as e:
             raise HTTPException(502, detail=f"strategy C: {e}")

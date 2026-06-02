@@ -42,8 +42,16 @@ TYPE_TO_STRATEGY = {
     "product_insert":    "image_edit_overlay",  # пока fallback на keep_original в worker
     "text_card":         "text_template",
     "b_roll":            "keep_original",
-    "unknown":           "regenerate",
+    # When the classifier hedges, do NOT spend Runway $ — keep the original
+    # segment. Risk of leaving a non-remade clip is lower than risk of
+    # mis-regenerating a screenshot/static text + drifting subtitles.
+    "unknown":           "keep_original",
 }
+
+# If talking_head_live comes back below this threshold we treat it as
+# "unknown" (→ keep_original). Empirically the classifier was over-firing
+# talking_head_live on screenshots that had a person's avatar in the corner.
+TALKING_HEAD_CONFIDENCE_MIN = 0.6
 
 
 class SceneClassifyError(Exception):
@@ -51,20 +59,38 @@ class SceneClassifyError(Exception):
 
 
 SYSTEM_PROMPT = """\
-Classify this single frame from a short-form video into ONE of these types:
+Classify this single frame from a short-form video into ONE of these types.
+Be CONSERVATIVE — when in doubt return "unknown" with low confidence.
+Misclassifying a screenshot as talking_head_live wastes Runway budget AND
+desyncs the burned-in subtitles, so the cost of false-positive
+talking_head_live is high.
 
-- talking_head_live: a real person is the main subject (face/body in shot,
-  could be selfie, candid, narrative scene)
-- screenshot_static: a screenshot of a chat (Telegram/WhatsApp/etc),
-  social media post, browser, app UI
+- talking_head_live: a real person CLEARLY dominates the frame (face/body
+  takes ≥40% of canvas) AND looks like live footage (not a static photo
+  or thumbnail). A small avatar in a corner does NOT count.
+- screenshot_static: a screenshot of a chat (Telegram/WhatsApp/iMessage),
+  social-media post, browser, app UI, or any rectangular text-heavy panel
+  even if it is overlaid on another image.
 - product_insert: close-up of a physical product (bottle, package, item
-  in hand or on surface) WITHOUT a person dominating frame
-- text_card: mostly empty background + large on-screen text overlay
-  (intro card, callout, slogan)
-- b_roll: landscape, ambient shot, no human/product focal subject
-- unknown: cannot tell
+  in hand or on surface) with NO person dominating the frame.
+- text_card: mostly plain/blurred background + LARGE on-screen text
+  overlay (intro card, callout, slogan, big stat).
+- b_roll: landscape, ambient/establishing shot, generic objects, no
+  human or product focal subject.
+- unknown: ambiguous or doesn't fit any category. USE THIS LIBERALLY —
+  unknown is safe (we keep the original clip); a wrong talking_head_live
+  is expensive.
 
-Return JSON ONLY: {"type": "...", "confidence": 0.0-1.0, "visible_text": "exact text if any, else null", "description": "≤120 chars what's in frame"}
+Return JSON ONLY:
+{"type": "...", "confidence": 0.0-1.0,
+ "visible_text": "exact text if any, else null",
+ "description": "≤120 chars what's in frame"}
+
+Confidence calibration:
+- 0.9+ : obvious, no other category plausible
+- 0.7-0.9 : likely but a second category is plausible
+- 0.5-0.7 : best guess, would not bet money
+- <0.5  : prefer to set type=unknown
 """
 
 
@@ -134,6 +160,21 @@ def classify_scene(
     t = parsed.get("type", "unknown")
     if t not in VALID_TYPES:
         t = "unknown"
+    try:
+        conf = float(parsed.get("confidence") or 0.0)
+    except (TypeError, ValueError):
+        conf = 0.0
+
+    # Downgrade low-confidence talking_head_live → unknown (= keep_original).
+    # The frame was probably a screenshot with a small avatar; regenerating
+    # would burn ~$0.25 Runway and drift the subtitles.
+    if t == "talking_head_live" and conf < TALKING_HEAD_CONFIDENCE_MIN:
+        logger.info(
+            f"  scene @ {start_sec:.1f}s: talking_head_live conf={conf:.2f} "
+            f"< {TALKING_HEAD_CONFIDENCE_MIN} → downgraded to unknown"
+        )
+        t = "unknown"
+
     return {
         "start": start_sec,
         "end": end_sec,
@@ -142,7 +183,7 @@ def classify_scene(
         "strategy": TYPE_TO_STRATEGY[t],
         "visible_text": parsed.get("visible_text"),
         "description": (parsed.get("description") or "")[:200],
-        "confidence": parsed.get("confidence"),
+        "confidence": conf,
     }
 
 
@@ -161,7 +202,7 @@ def classify_scenes(
                         f"{enriched['type']} → {enriched['strategy']}")
         except SceneClassifyError as e:
             logger.warning(f"  scene {i+1} classify failed: {e}")
-            enriched = {**s, "type": "unknown", "strategy": "regenerate",
+            enriched = {**s, "type": "unknown", "strategy": "keep_original",
                         "visible_text": None, "description": str(e)[:120]}
         out.append(enriched)
     return out

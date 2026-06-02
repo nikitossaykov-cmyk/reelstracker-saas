@@ -26,6 +26,7 @@ import logging
 import shutil
 import subprocess
 import tempfile
+import time
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -209,6 +210,175 @@ def _stitch_slideshow(edited_pngs: list[Path], audio_src: Path,
         raise StrategyCError(f"xfade stitch rc={r.returncode}: {r.stderr[:400]}")
 
 
+def _runway_pair_to_segment(
+    api_key: str,
+    start_url: str,
+    end_url: str,
+    duration_sec: int,
+    prompt: str = "",
+    *,
+    poll_interval: int = 8,
+    max_wait_sec: int = 240,
+) -> str:
+    """Submit one Runway image_to_video segment with both start AND end
+    keyframes, poll until done, return the output video URL.
+
+    Runway accepts only duration ∈ {5, 10} for gen4_turbo. We round UP
+    to the nearest allowed value — caller is responsible for trimming
+    excess via ffmpeg if needed.
+
+    Raises StrategyCError on any failure (caller can fall back).
+    """
+    import requests
+
+    if duration_sec <= 5:
+        api_duration = 5
+    else:
+        api_duration = 10
+    payload = {
+        "model": "gen4_turbo",
+        "promptText": (prompt or "smooth natural motion, preserve composition")[:1000],
+        "ratio": "720:1280",
+        "duration": api_duration,
+        "promptImage": [
+            {"uri": start_url, "position": "first"},
+            {"uri": end_url, "position": "last"},
+        ],
+    }
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "X-Runway-Version": "2024-11-06",
+        "Content-Type": "application/json",
+    }
+    submit_url = "https://api.dev.runwayml.com/v1/image_to_video"
+    r = requests.post(submit_url, headers=headers, json=payload, timeout=60)
+    if r.status_code >= 400:
+        raise StrategyCError(f"Runway submit HTTP {r.status_code}: {r.text[:300]}")
+    body = r.json()
+    task_id = body.get("id")
+    if not task_id:
+        raise StrategyCError(f"Runway submit: no task id in {body}")
+
+    # poll
+    poll_url = f"https://api.dev.runwayml.com/v1/tasks/{task_id}"
+    elapsed = 0
+    while elapsed < max_wait_sec:
+        time.sleep(poll_interval)
+        elapsed += poll_interval
+        rr = requests.get(poll_url, headers=headers, timeout=60)
+        if rr.status_code >= 400:
+            raise StrategyCError(f"Runway poll HTTP {rr.status_code}: {rr.text[:300]}")
+        b = rr.json()
+        status = b.get("status", "")
+        if status == "SUCCEEDED":
+            output = b.get("output") or []
+            if isinstance(output, list) and output:
+                return output[0]
+            if isinstance(output, str):
+                return output
+            raise StrategyCError(f"Runway SUCCEEDED but no output: {b}")
+        if status in ("FAILED", "CANCELLED"):
+            raise StrategyCError(f"Runway task {status}: {b.get('failure') or b}")
+    raise StrategyCError(f"Runway poll timeout after {max_wait_sec}s")
+
+
+def _download_to(url: str, dst: Path, timeout: int = 120) -> None:
+    import requests
+    with requests.get(url, stream=True, timeout=timeout) as r:
+        r.raise_for_status()
+        with dst.open("wb") as f:
+            for chunk in r.iter_content(chunk_size=1024 * 1024):
+                if chunk:
+                    f.write(chunk)
+
+
+def _smooth_via_runway(
+    edited_pngs: list[Path],
+    audio_src: Path,
+    out_video: Path,
+    total_duration: float,
+    *,
+    user_id: int,
+    runway_api_key: str,
+    runway_prompt: str,
+    r2,
+    workdir: Path,
+) -> int:
+    """C+ mode: between every pair of consecutive edited keyframes, ask
+    Runway image_to_video to interpolate. Returns count of Runway segments
+    actually used (caller multiplies by per-second pricing for cost).
+    """
+    n = len(edited_pngs)
+    if n < 2:
+        raise StrategyCError("need ≥2 keyframes for smooth mode")
+
+    # Upload all edited PNGs to R2 so Runway can fetch them.
+    kf_urls: list[str] = []
+    kf_keys: list[str] = []
+    for i, p in enumerate(edited_pngs):
+        key = f"users/{user_id}/forge_c_tmp/{uuid.uuid4().hex[:8]}_kf{i}.png"
+        with p.open("rb") as f:
+            r2.upload_bytes(key, f.read(), content_type="image/png")
+        kf_urls.append(r2.get_public_url(key))
+        kf_keys.append(key)
+
+    try:
+        per_segment_sec = max(1.0, total_duration / (n - 1))
+        # Runway clamps to 5 or 10 sec — pick smaller bucket if our gap is short.
+        segments_out: list[Path] = []
+        for i in range(n - 1):
+            seg_path = workdir / f"runway_seg_{i:02d}.mp4"
+            logger.info(f"  runway segment {i+1}/{n-1} "
+                        f"(target {per_segment_sec:.1f}s)")
+            seg_url = _runway_pair_to_segment(
+                runway_api_key,
+                start_url=kf_urls[i],
+                end_url=kf_urls[i + 1],
+                duration_sec=int(per_segment_sec) if per_segment_sec >= 5 else 5,
+                prompt=runway_prompt,
+            )
+            _download_to(seg_url, seg_path)
+            # trim to per_segment_sec if Runway gave us a longer 5s/10s clip
+            trimmed = workdir / f"runway_seg_{i:02d}_trim.mp4"
+            tr = subprocess.run(
+                ["ffmpeg", "-y", "-loglevel", "error",
+                 "-i", str(seg_path), "-t", f"{per_segment_sec:.3f}",
+                 "-c:v", "libx264", "-an", str(trimmed)],
+                capture_output=True, text=True, timeout=120, check=False,
+            )
+            if tr.returncode != 0:
+                # fall back to untrimmed if trim fails
+                shutil.copy(seg_path, trimmed)
+            segments_out.append(trimmed)
+
+        # Concat all segments + overlay original audio
+        concat_list = workdir / "runway_concat.txt"
+        concat_list.write_text(
+            "\n".join(f"file '{p.resolve()}'" for p in segments_out),
+            encoding="utf-8",
+        )
+        cmd = [
+            "ffmpeg", "-y", "-loglevel", "error",
+            "-f", "concat", "-safe", "0", "-i", str(concat_list),
+            "-i", str(audio_src),
+            "-map", "0:v:0", "-map", "1:a:0?",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-b:a", "128k", "-shortest",
+            str(out_video),
+        ]
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=300, check=False)
+        if r.returncode != 0 or not out_video.exists():
+            raise StrategyCError(f"runway-mode concat rc={r.returncode}: {r.stderr[:300]}")
+        return n - 1
+    finally:
+        # Best-effort cleanup of temp R2 keyframe uploads
+        for k in kf_keys:
+            try:
+                r2.delete(k)
+            except Exception:
+                pass
+
+
 def run_strategy_c(
     db: Session,
     user: User,
@@ -218,10 +388,22 @@ def run_strategy_c(
     product_description: Optional[str] = None,
     extra_instructions: Optional[str] = None,
     keyframe_count: int = 5,
+    smooth_transitions: bool = False,
 ) -> dict:
-    """End-to-end. Sync; expect 2-5 min for N=5, 4-8 min for N=10."""
+    """End-to-end. Sync; expect 2-5 min for N=5, 4-8 min for N=10.
+
+    If `smooth_transitions=True`, between each pair of edited keyframes
+    Runway image_to_video interpolates a real motion clip (~$0.25 per
+    segment for gen4_turbo @ 5s × $0.05/s). Total cost for N=5 jumps
+    from ~$0.21 to ~$1.21. Wall time ~3-5 extra min for the Runway polls.
+    """
     if not user.openai_api_key:
         raise StrategyCError("Strategy C нужен openai_api_key в профиле")
+    if smooth_transitions and not user.runway_api_key:
+        raise StrategyCError(
+            "C+ smooth_transitions нужен runway_api_key в профиле "
+            "(сними галочку 🎬 если не хочешь использовать Runway)"
+        )
     if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
         raise StrategyCError("ffmpeg/ffprobe not in PATH")
 
@@ -287,8 +469,22 @@ def run_strategy_c(
             edited_pngs.append(out_png)
             logger.info(f"  kf {i+1}/{len(src_pngs)} edited")
 
-        # 4. stitch slideshow + original audio
-        _stitch_slideshow(edited_pngs, src_mp4, final_mp4, duration)
+        # 4. stitch
+        runway_segments = 0
+        if smooth_transitions and len(edited_pngs) >= 2:
+            runway_prompt = (
+                "smooth natural motion, same subject and composition as "
+                "start and end frames, photorealistic"
+            )
+            runway_segments = _smooth_via_runway(
+                edited_pngs, src_mp4, final_mp4, duration,
+                user_id=user.id,
+                runway_api_key=user.runway_api_key,
+                runway_prompt=runway_prompt,
+                r2=r2, workdir=workdir,
+            )
+        else:
+            _stitch_slideshow(edited_pngs, src_mp4, final_mp4, duration)
 
         # 5. R2 upload
         key = f"users/{user.id}/forge_c/{uuid.uuid4().hex[:12]}.mp4"
@@ -296,13 +492,21 @@ def run_strategy_c(
             r2.upload_bytes(key, f.read(), content_type="video/mp4")
         media_url = r2.get_public_url(key)
 
-        # 6. persist
+        # 6. persist + cost calc
         cost_usd = 0.04 * len(edited_pngs) + 0.01  # gpt-image-1 medium + overhead
+        if runway_segments:
+            # gen4_turbo @ $0.05/sec, each segment is 5 or 10 sec
+            per_segment_sec = max(1.0, duration / (len(edited_pngs) - 1))
+            api_sec = 5 if per_segment_sec < 5 else 10
+            cost_usd += runway_segments * api_sec * 0.05
+        prompt_tag = f"strategy=C N={kf_count}"
+        if smooth_transitions:
+            prompt_tag += " +runway"
         gv = GeneratedVideo(
             user_id=user.id,
-            provider=VideoProvider.MOCK,  # local-stitched, no external video provider
+            provider=VideoProvider.RUNWAY if smooth_transitions else VideoProvider.MOCK,
             status=GenerationStatus.READY,
-            prompt=f"[strategy=C frame-inpaint N={kf_count}] source={source_url}",
+            prompt=f"[{prompt_tag}] source={source_url}",
             media_url=media_url,
             media_storage_key=key,
             completed_at=datetime.utcnow(),

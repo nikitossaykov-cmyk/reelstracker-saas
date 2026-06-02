@@ -157,9 +157,16 @@
         <input name="face_description" placeholder="👤 Лицо" class="bg-black/40 border border-white/10 px-3 py-2 rounded text-sm" />
         <input name="outfit_description" placeholder="👗 Одежда" class="bg-black/40 border border-white/10 px-3 py-2 rounded text-sm" />
       </div>
+      <label class="flex items-start gap-2 mt-3 text-sm cursor-pointer">
+        <input type="checkbox" name="c_smooth_transitions" class="mt-1" />
+        <span>
+          🎬 <strong>C+ Плавные переходы</strong> — между кадрами Runway image-to-video генерит живое движение (вместо xfade slideshow).
+          <span class="block text-xs text-gray-500 mt-0.5">+$0.05/сек на каждый сегмент. Для N=5 на 30-сек ролике добавит ~$1.00. Требует runway_api_key.</span>
+        </span>
+      </label>
       <div class="mt-3 p-2 bg-green-900/20 border border-green-500/30 rounded text-xs text-green-200">
-        ✅ C MVP: slideshow из N edited кадров с оригинальным звуком. Sync, ~2-5 мин для N=5. Требует openai_api_key.
-        Качество дискретное (без интерполяции — будет видно «переходы» между кадрами), но субтитры точно не сдвинутся.
+        ✅ Default mode: gpt-image-1 inpaint + ffmpeg xfade slideshow. ~$0.21 за N=5, 2-3 мин.
+        Включи C+ выше если хочешь живое движение между кадрами — будет дороже и медленнее, но качество значительно выше.
       </div>
     </div>
 
@@ -355,7 +362,8 @@ function getParams() {
       brand: v('brand'),
       product_description: v('product_description'),
       extra_instructions: parts.length ? parts.join(' | ') : null,
-      c_keyframe_count: parseInt(v('c_keyframe_count') || '8', 10),
+      c_keyframe_count: parseInt(v('c_keyframe_count') || '5', 10),
+      c_smooth_transitions: c('c_smooth_transitions'),
     };
   }
   return {};

@@ -141,34 +141,72 @@ def _edit_keyframe_via_gpt_image(
 
 
 def _stitch_slideshow(edited_pngs: list[Path], audio_src: Path,
-                      out_video: Path, total_duration: float) -> None:
+                      out_video: Path, total_duration: float,
+                      transition_sec: float = 0.5) -> None:
+    """Stitch edited PNGs with ffmpeg xfade crossfades (PR-5).
+
+    Each slide is held visible for `per_frame` sec, then crossfades into
+    the next over `transition_sec`. final_video_len = N*per_frame -
+    (N-1)*transition, so we solve for per_frame to land on total_duration.
+
+    Falls back to hard-cut concat for N=1 or if xfade fails.
+    """
     if not edited_pngs:
         raise StrategyCError("no edited frames to stitch")
-    per_frame = total_duration / len(edited_pngs)
-    # Build a concat-demuxer file: each png held `per_frame` sec.
-    concat = out_video.parent / "concat.txt"
-    lines = []
-    for p in edited_pngs:
-        lines.append(f"file '{p.resolve()}'")
-        lines.append(f"duration {per_frame:.4f}")
-    # ffmpeg concat needs the final file repeated without `duration`
-    lines.append(f"file '{edited_pngs[-1].resolve()}'")
-    concat.write_text("\n".join(lines), encoding="utf-8")
+    n = len(edited_pngs)
 
-    cmd = [
-        "ffmpeg", "-y", "-loglevel", "error",
-        "-f", "concat", "-safe", "0", "-i", str(concat),
-        "-i", str(audio_src),
-        "-map", "0:v:0", "-map", "1:a:0?",
+    if n == 1:
+        # Single image → just loop it for total_duration over the audio.
+        cmd = [
+            "ffmpeg", "-y", "-loglevel", "error",
+            "-loop", "1", "-t", f"{total_duration:.3f}", "-i", str(edited_pngs[0]),
+            "-i", str(audio_src),
+            "-map", "0:v:0", "-map", "1:a:0?",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p",
+            "-vf", "fps=30,format=yuv420p",
+            "-c:a", "aac", "-b:a", "128k", "-shortest",
+            str(out_video),
+        ]
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=300, check=False)
+        if r.returncode != 0 or not out_video.exists():
+            raise StrategyCError(f"single-frame stitch rc={r.returncode}: {r.stderr[:300]}")
+        return
+
+    # Clamp transition so it doesn't exceed per_frame.
+    transition = max(0.1, min(transition_sec, total_duration / (n * 2)))
+    per_frame = (total_duration + (n - 1) * transition) / n
+
+    cmd: list[str] = ["ffmpeg", "-y", "-loglevel", "error"]
+    for p in edited_pngs:
+        cmd += ["-loop", "1", "-t", f"{per_frame:.4f}", "-i", str(p)]
+    cmd += ["-i", str(audio_src)]
+
+    # Chain xfades: [0][1]xfade=offset=A[v01]; [v01][2]xfade=offset=B[v12]; ...
+    filters = []
+    prev_label = "0:v"
+    cumulative = per_frame  # end-time of accumulated chain so far
+    for i in range(1, n):
+        offset = cumulative - transition
+        out_label = f"v{i}"
+        filters.append(
+            f"[{prev_label}][{i}:v]xfade=transition=fade"
+            f":duration={transition:.4f}:offset={offset:.4f}[{out_label}]"
+        )
+        prev_label = out_label
+        cumulative += per_frame - transition
+
+    cmd += [
+        "-filter_complex", ";".join(filters),
+        "-map", f"[{prev_label}]",
+        "-map", f"{n}:a:0?",
         "-c:v", "libx264", "-pix_fmt", "yuv420p",
         "-vf", "fps=30,format=yuv420p",
-        "-c:a", "aac", "-b:a", "128k",
-        "-shortest",
+        "-c:a", "aac", "-b:a", "128k", "-shortest",
         str(out_video),
     ]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=300, check=False)
     if r.returncode != 0 or not out_video.exists():
-        raise StrategyCError(f"stitch ffmpeg rc={r.returncode}: {r.stderr[:300]}")
+        raise StrategyCError(f"xfade stitch rc={r.returncode}: {r.stderr[:400]}")
 
 
 def run_strategy_c(

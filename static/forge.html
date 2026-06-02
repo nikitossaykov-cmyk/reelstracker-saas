@@ -140,8 +140,8 @@
         <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="b_mutate_audio" checked /> 🔊 Звук (pitch ±2%, лёгкий noise)</label>
         <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="b_rewrite_subs" checked /> 📝 Перезапись субтитров через LLM (новый текст, тот же тайминг)</label>
       </div>
-      <div class="mt-3 p-2 bg-yellow-900/20 border border-yellow-500/30 rounded text-xs text-yellow-200">
-        ⚠️ B-стратегия ещё не задеплоена. Этот пейн готов, бэк подключим в PR-2.
+      <div class="mt-3 p-2 bg-green-900/20 border border-green-500/30 rounded text-xs text-green-200">
+        ✅ B работает синхронно. ~30-90 сек, результат сразу. Перезапись субтитров требует openai_api_key в профиле.
       </div>
     </div>
 
@@ -395,9 +395,17 @@ async function startForge() {
       throw new Error(e);
     }
     const data = await resp.json();
-    currentReelId = data.reel_id;
     document.getElementById('input-section').classList.add('hidden');
     document.getElementById('strategy-tabs').classList.add('hidden');
+
+    // Strategy B returns the final media_url synchronously — no polling needed.
+    if (activeStrategy === 'B' && data.media_url) {
+      showStrategyBResult(data);
+      return;
+    }
+
+    // Strategy A (and C, when wired) — async pipeline, poll for status.
+    currentReelId = data.reel_id;
     document.getElementById('progress-section').classList.remove('hidden');
     document.querySelector('[data-stage="uploaded"]').classList.add('done', 'active');
     document.querySelector('[data-stage="analyzing"]').classList.add('active');
@@ -407,6 +415,25 @@ async function startForge() {
     alert('❌ ' + e.message);
     btn.disabled = false; btn.textContent = '🎬 Сделать ремейк';
   }
+}
+
+function showStrategyBResult(d) {
+  const res = document.getElementById('result-section');
+  if (!res) {
+    // No dedicated result section in this build — show inline.
+    const div = document.createElement('div');
+    div.className = 'glass rounded-2xl p-6 mb-6';
+    div.innerHTML = `
+      <h2 class="text-lg font-semibold mb-3">🔀 Уникализатор готов</h2>
+      <div class="text-xs text-gray-400 mb-3">Стоимость: $${(d.cost_actual_usd || 0).toFixed(3)}</div>
+      <video src="${d.media_url}" controls class="w-full rounded mb-3"></video>
+      <a href="${d.media_url}" download="forge-b.mp4" class="btn-magic inline-block px-4 py-2 rounded text-sm">↓ Скачать MP4</a>
+      <button onclick="location.reload()" class="ml-2 text-xs text-gray-400 underline">Ещё ремейк</button>
+    `;
+    document.querySelector('.max-w-3xl').appendChild(div);
+    return;
+  }
+  res.classList.remove('hidden');
 }
 
 function startPolling() {

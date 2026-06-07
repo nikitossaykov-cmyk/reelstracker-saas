@@ -226,7 +226,7 @@ def run_strategy_b(
         key = f"users/{user.id}/forge_b/{uuid.uuid4().hex[:12]}.mp4"
         with final_mp4.open("rb") as f:
             r2.upload_bytes(key, f.read(), content_type="video/mp4")
-        media_url = r2.get_public_url(key)
+        media_url = r2.get_proxy_url(key)
 
         # 5. persist as GeneratedVideo
         cost_usd = 0.005  # uniqify CPU only

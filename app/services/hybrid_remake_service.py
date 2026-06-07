@@ -361,7 +361,7 @@ def execute_hybrid_remake(
         with final.open("rb") as f:
             r2.upload_bytes(key, f.read(), content_type="video/mp4")
         gv.media_storage_key = key
-        gv.media_url = r2.get_public_url(key)
+        gv.media_url = r2.get_proxy_url(key)
         gv.status = GenerationStatus.READY
         gv.completed_at = datetime.utcnow()
         gv.cost_kopecks = breakdown["total"]  # в USD cents

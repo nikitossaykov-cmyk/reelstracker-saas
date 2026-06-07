@@ -89,6 +89,11 @@ class R2Storage:
 
         Если задан R2_PUBLIC_BASE_URL (Cloudflare CDN на custom domain) —
         склеиваем с ним. Иначе генерим presigned URL с TTL.
+
+        ⚠️ Эту функцию НЕ сохранять в БД и НЕ возвращать в UI напрямую —
+        presigned URLs протухают за <7 дней и видео ломается. Для UI
+        использовать get_proxy_url() — он возвращает endpoint который
+        генерит свежий presigned на каждый access.
         """
         if self.public_base_url:
             return urljoin(self.public_base_url, key)
@@ -97,6 +102,16 @@ class R2Storage:
             Params={"Bucket": self.bucket, "Key": key},
             ExpiresIn=self.presigned_ttl_seconds,
         )
+
+    def get_proxy_url(self, key: str) -> str:
+        """Stable, never-expiring URL. Browser hits /api/media?key=...
+        which 302-redirects to a freshly-signed R2 URL each time.
+
+        Use this in DB writes (gv.media_url, reel.media_storage_key
+        rendering) and API responses going to the frontend.
+        """
+        from urllib.parse import quote
+        return f"/api/media?key={quote(key, safe='/')}"
 
 
 _instance: Optional[R2Storage] = None

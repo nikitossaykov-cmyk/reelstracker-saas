@@ -531,7 +531,7 @@ def run_strategy_c(
         key = f"users/{user.id}/forge_c/{uuid.uuid4().hex[:12]}.mp4"
         with final_mp4.open("rb") as f:
             r2.upload_bytes(key, f.read(), content_type="video/mp4")
-        media_url = r2.get_public_url(key)
+        media_url = r2.get_proxy_url(key)
 
         # 6. persist + cost calc
         cost_usd = 0.04 * len(edited_pngs) + 0.01  # gpt-image-1 medium + overhead

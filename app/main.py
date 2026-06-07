@@ -314,6 +314,7 @@ from app.api.voice import router as voice_router
 from app.api.magic import router as magic_router
 from app.api.account_insights import router as account_insights_router
 from app.api.forge import router as forge_router
+from app.api.media import router as media_router
 
 app.include_router(auth_router, prefix="/api/auth", tags=["Auth"])
 app.include_router(reels_router, prefix="/api/reels", tags=["Reels"])
@@ -332,6 +333,7 @@ app.include_router(voice_router, prefix="/api/voice", tags=["Voice"])
 app.include_router(magic_router, prefix="/api/magic", tags=["Magic"])
 app.include_router(account_insights_router, prefix="/api/account-insights", tags=["AccountInsights"])
 app.include_router(forge_router, prefix="/api/forge", tags=["Forge"])
+app.include_router(media_router, prefix="/api/media", tags=["Media"])
 
 # ─── Static Files ──────────────────────────────────────────
 

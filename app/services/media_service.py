@@ -92,7 +92,8 @@ def get_reel_media_url(reel: Reel) -> Optional[str]:
         r2 = get_r2()
     except (R2NotConfigured, ImportError):
         return None
-    return r2.get_public_url(reel.media_storage_key)
+    # Use proxy URL so links survive past presigned TTL when re-rendered in UI.
+    return r2.get_proxy_url(reel.media_storage_key)
 
 
 def delete_reel_media(db: Session, reel: Reel) -> bool:

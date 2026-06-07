@@ -153,7 +153,7 @@ def process_generate_video_job(db: Session, job: ParseJob) -> bool:
             return True
         key = _r2_key_for(user.id, gv.id)
         _, size_bytes = r2.upload_from_url(final.media_url, key)
-        public_url = r2.get_public_url(key)
+        public_url = r2.get_proxy_url(key)
         logger.info(f"  uploaded to R2: {key} ({size_bytes} bytes) → {public_url[:60]}...")
     except Exception as e:
         logger.error(f"R2 upload failed for gv #{gv.id}: {e}")

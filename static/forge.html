@@ -160,8 +160,8 @@
       <label class="flex items-start gap-2 mt-3 text-sm cursor-pointer">
         <input type="checkbox" name="c_smooth_transitions" class="mt-1" />
         <span>
-          🎬 <strong>C+ Плавные переходы</strong> — между кадрами Runway image-to-video генерит живое движение (вместо xfade slideshow).
-          <span class="block text-xs text-gray-500 mt-0.5">+$0.05/сек на каждый сегмент. Для N=5 на 30-сек ролике добавит ~$1.00. Требует runway_api_key.</span>
+          🎬 <strong>C+ Runway motion</strong> — каждый кадр становится 5-сек Runway-видео (gen4_turbo), сегменты склеены через crossfade.
+          <span class="block text-xs text-gray-500 mt-0.5">+$0.05/сек × 5сек × (N-1). Для N=5 это ~$1.00. Сегменты не идут точно в next-keyframe (Runway gen4_turbo пока не поддерживает end-frame через API), но движение настоящее. Требует runway_api_key.</span>
         </span>
       </label>
       <div class="mt-3 p-2 bg-green-900/20 border border-green-500/30 rounded text-xs text-green-200">

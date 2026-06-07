@@ -213,37 +213,35 @@ def _stitch_slideshow(edited_pngs: list[Path], audio_src: Path,
 def _runway_pair_to_segment(
     api_key: str,
     start_url: str,
-    end_url: str,
+    end_url: str,  # kept for API compat but not used in this build
     duration_sec: int,
     prompt: str = "",
     *,
     poll_interval: int = 8,
     max_wait_sec: int = 240,
 ) -> str:
-    """Submit one Runway image_to_video segment with both start AND end
-    keyframes, poll until done, return the output video URL.
+    """Submit one Runway image_to_video segment from a single start keyframe.
 
-    Runway accepts only duration ∈ {5, 10} for gen4_turbo. We round UP
-    to the nearest allowed value — caller is responsible for trimming
-    excess via ffmpeg if needed.
+    Originally tried promptImage=[{first},{last}] (gen4 spec) but
+    gen4_turbo rejects array form with zod validation error. Until we
+    integrate Seedance 2.0 / HappyHorse 1.0 (which support keyframe
+    control natively in Runway API) we send only the start frame as a
+    string URL. The caller stitches consecutive segments with an ffmpeg
+    crossfade to hide the discontinuity at segment boundaries.
 
-    Raises StrategyCError on any failure (caller can fall back).
+    Runway accepts only duration ∈ {5, 10} for gen4_turbo.
+
+    Raises StrategyCError on any failure.
     """
     import requests
 
-    if duration_sec <= 5:
-        api_duration = 5
-    else:
-        api_duration = 10
+    api_duration = 5 if duration_sec <= 5 else 10
     payload = {
         "model": "gen4_turbo",
         "promptText": (prompt or "smooth natural motion, preserve composition")[:1000],
         "ratio": "720:1280",
         "duration": api_duration,
-        "promptImage": [
-            {"uri": start_url, "position": "first"},
-            {"uri": end_url, "position": "last"},
-        ],
+        "promptImage": start_url,  # string URL form — single start keyframe
     }
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -351,24 +349,48 @@ def _smooth_via_runway(
                 shutil.copy(seg_path, trimmed)
             segments_out.append(trimmed)
 
-        # Concat all segments + overlay original audio
-        concat_list = workdir / "runway_concat.txt"
-        concat_list.write_text(
-            "\n".join(f"file '{p.resolve()}'" for p in segments_out),
-            encoding="utf-8",
-        )
-        cmd = [
-            "ffmpeg", "-y", "-loglevel", "error",
-            "-f", "concat", "-safe", "0", "-i", str(concat_list),
-            "-i", str(audio_src),
-            "-map", "0:v:0", "-map", "1:a:0?",
-            "-c:v", "libx264", "-pix_fmt", "yuv420p",
-            "-c:a", "aac", "-b:a", "128k", "-shortest",
-            str(out_video),
-        ]
+        # Stitch segments with xfade to soften the start-frame-only jumps
+        # between segments. (When we upgrade to real keyframe control we
+        # can drop the xfade since segments will land on the next kf.)
+        if len(segments_out) == 1:
+            cmd = [
+                "ffmpeg", "-y", "-loglevel", "error",
+                "-i", str(segments_out[0]),
+                "-i", str(audio_src),
+                "-map", "0:v:0", "-map", "1:a:0?",
+                "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                "-c:a", "aac", "-b:a", "128k", "-shortest",
+                str(out_video),
+            ]
+        else:
+            transition = 0.4
+            cmd = ["ffmpeg", "-y", "-loglevel", "error"]
+            for seg in segments_out:
+                cmd += ["-i", str(seg)]
+            cmd += ["-i", str(audio_src)]
+            filters = []
+            prev = "0:v"
+            cumulative = per_segment_sec
+            for i in range(1, len(segments_out)):
+                offset = cumulative - transition
+                out_label = f"v{i}"
+                filters.append(
+                    f"[{prev}][{i}:v]xfade=transition=fade"
+                    f":duration={transition:.4f}:offset={offset:.4f}[{out_label}]"
+                )
+                prev = out_label
+                cumulative += per_segment_sec - transition
+            cmd += [
+                "-filter_complex", ";".join(filters),
+                "-map", f"[{prev}]",
+                "-map", f"{len(segments_out)}:a:0?",
+                "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                "-c:a", "aac", "-b:a", "128k", "-shortest",
+                str(out_video),
+            ]
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=300, check=False)
         if r.returncode != 0 or not out_video.exists():
-            raise StrategyCError(f"runway-mode concat rc={r.returncode}: {r.stderr[:300]}")
+            raise StrategyCError(f"runway-mode stitch rc={r.returncode}: {r.stderr[:400]}")
         return n - 1
     finally:
         # Best-effort cleanup of temp R2 keyframe uploads

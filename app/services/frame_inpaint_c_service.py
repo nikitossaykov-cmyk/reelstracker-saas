@@ -183,16 +183,21 @@ def _stitch_slideshow(edited_pngs: list[Path], audio_src: Path,
     cmd += ["-i", str(audio_src)]
 
     # Chain xfades: [0][1]xfade=offset=A[v01]; [v01][2]xfade=offset=B[v12]; ...
+    # Append fps=30,format=yuv420p to the LAST xfade output (ffmpeg refuses
+    # -vf in combination with -filter_complex on the same stream).
     filters = []
     prev_label = "0:v"
     cumulative = per_frame  # end-time of accumulated chain so far
     for i in range(1, n):
         offset = cumulative - transition
         out_label = f"v{i}"
-        filters.append(
-            f"[{prev_label}][{i}:v]xfade=transition=fade"
-            f":duration={transition:.4f}:offset={offset:.4f}[{out_label}]"
-        )
+        is_last = (i == n - 1)
+        chain = (f"[{prev_label}][{i}:v]xfade=transition=fade"
+                 f":duration={transition:.4f}:offset={offset:.4f}")
+        if is_last:
+            chain += ",fps=30,format=yuv420p"
+        chain += f"[{out_label}]"
+        filters.append(chain)
         prev_label = out_label
         cumulative += per_frame - transition
 
@@ -201,7 +206,6 @@ def _stitch_slideshow(edited_pngs: list[Path], audio_src: Path,
         "-map", f"[{prev_label}]",
         "-map", f"{n}:a:0?",
         "-c:v", "libx264", "-pix_fmt", "yuv420p",
-        "-vf", "fps=30,format=yuv420p",
         "-c:a", "aac", "-b:a", "128k", "-shortest",
         str(out_video),
     ]

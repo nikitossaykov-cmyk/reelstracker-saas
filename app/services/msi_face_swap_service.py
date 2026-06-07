@@ -108,7 +108,7 @@ def face_swap_via_msi(
 
         # 7) Update DB — пишем как uniq-копию (cheaper-than-runway альтернатива)
         gv.uniq_storage_key = key
-        gv.uniq_media_url = r2.get_public_url(key)
+        gv.uniq_media_url = r2.get_proxy_url(key)
         gv.uniqified_at = datetime.utcnow()
         db.commit()
 

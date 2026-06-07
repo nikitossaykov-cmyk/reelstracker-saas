@@ -136,7 +136,7 @@ def voice_clone_to_r2(
         key = f"users/{user_id}/voice/{uuid.uuid4().hex[:12]}.wav"
         with out_wav.open("rb") as f:
             r2.upload_bytes(key, f.read(), content_type="audio/wav")
-        url = r2.get_public_url(key)
+        url = r2.get_proxy_url(key)
         logger.info(f"voice clone uploaded to R2: {key}")
         return key, url
     finally:

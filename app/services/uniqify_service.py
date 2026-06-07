@@ -38,9 +38,9 @@ def uniqify_generated_video(
     if not gv.media_storage_key:
         raise UniqifyError(f"gv #{gv.id} has no media_storage_key — generate first")
     if gv.uniq_storage_key and not overwrite:
-        # Уже uniq-нуто — возвращаем существующий URL
+        # Уже uniq-нуто — возвращаем существующий URL (proxy → fresh presigned)
         from app.core.storage import get_r2
-        return get_r2().get_public_url(gv.uniq_storage_key)
+        return get_r2().get_proxy_url(gv.uniq_storage_key)
 
     try:
         from app.core.storage import get_r2
@@ -59,7 +59,7 @@ def uniqify_generated_video(
         )
         with dst.open("rb") as f:
             r2.upload_bytes(uniq_key, f.read(), content_type="video/mp4")
-        uniq_url = r2.get_public_url(uniq_key)
+        uniq_url = r2.get_proxy_url(uniq_key)
 
         gv.uniq_storage_key = uniq_key
         gv.uniq_media_url = uniq_url

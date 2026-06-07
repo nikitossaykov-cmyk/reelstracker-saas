@@ -251,7 +251,22 @@ def _runway_pair_to_segment(
     submit_url = "https://api.dev.runwayml.com/v1/image_to_video"
     r = requests.post(submit_url, headers=headers, json=payload, timeout=60)
     if r.status_code >= 400:
-        raise StrategyCError(f"Runway submit HTTP {r.status_code}: {r.text[:300]}")
+        body_text = r.text or ""
+        low = body_text.lower()
+        if "not enough credits" in low or "insufficient" in low or r.status_code == 402:
+            raise StrategyCError(
+                "💳 Закончились Runway-кредиты. Пополни на "
+                "https://dev.runwayml.com/billing и попробуй ещё раз. "
+                "Один тест C+ при N=5 = ~$1.00."
+            )
+        if "moderat" in low:
+            raise StrategyCError(
+                "🛑 Runway moderation отбил кадр (наверняка лицо/откровенный "
+                "контент). Попробуй другой ролик или уменьши c_keyframe_count."
+            )
+        if r.status_code in (401, 403):
+            raise StrategyCError("🔑 Runway API-key недействителен — проверь в профиле.")
+        raise StrategyCError(f"Runway submit HTTP {r.status_code}: {body_text[:300]}")
     body = r.json()
     task_id = body.get("id")
     if not task_id:

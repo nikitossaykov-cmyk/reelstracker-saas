@@ -355,12 +355,10 @@ def _smooth_via_runway(
     try:
         per_segment_sec = max(1.0, total_duration / (n - 1))
         # Runway clamps to 5 or 10 sec — pick smaller bucket if our gap is short.
-        segments_out: list[Path] = []
-        failures: list[tuple[int, str]] = []  # (idx, reason)
+        # Index → (trimmed_path or None, failure_reason or None)
+        seg_results: dict[int, tuple[Optional[Path], Optional[str]]] = {}
 
         def _still_segment_from(png_path: Path, dst: Path, sec: float) -> bool:
-            """Loop one PNG as a static N-second video. Fallback when
-            Runway fails on a particular keyframe."""
             r = subprocess.run(
                 ["ffmpeg", "-y", "-loglevel", "error",
                  "-loop", "1", "-t", f"{sec:.3f}",
@@ -373,11 +371,10 @@ def _smooth_via_runway(
             )
             return r.returncode == 0 and dst.exists()
 
-        for i in range(n - 1):
+        def _one_segment(i: int) -> tuple[int, Optional[Path], Optional[str]]:
             seg_path = workdir / f"runway_seg_{i:02d}.mp4"
             trimmed = workdir / f"runway_seg_{i:02d}_trim.mp4"
-            logger.info(f"  runway segment {i+1}/{n-1} "
-                        f"(target {per_segment_sec:.1f}s) "
+            logger.info(f"  runway segment {i+1}/{n-1} (target {per_segment_sec:.1f}s) "
                         f"start={kf_urls[i][:80]}")
             try:
                 seg_url = _runway_pair_to_segment(
@@ -396,20 +393,38 @@ def _smooth_via_runway(
                 )
                 if tr.returncode != 0:
                     shutil.copy(seg_path, trimmed)
-                segments_out.append(trimmed)
+                return i, trimmed, None
             except StrategyCError as e:
-                # Per-segment failure (Runway moderation, transient error, etc):
-                # substitute a still image of the start frame so the timeline
-                # stays intact and the whole pipeline doesn't blow up.
-                logger.warning(
-                    f"  runway segment {i+1}/{n-1} failed ({e}); "
-                    f"using still frame fallback"
-                )
-                failures.append((i, str(e)[:200]))
+                logger.warning(f"  runway segment {i+1}/{n-1} failed ({e}); still-frame fallback")
                 if _still_segment_from(edited_pngs[i], trimmed, per_segment_sec):
-                    segments_out.append(trimmed)
-                else:
-                    logger.error(f"  still-fallback for segment {i+1} ALSO failed; skipping")
+                    return i, trimmed, str(e)[:200]
+                logger.error(f"  still-fallback for segment {i+1} ALSO failed; skipping")
+                return i, None, str(e)[:200]
+
+        # Run all Runway segments in parallel — wall clock drops from
+        # ~N×60s sequential to roughly one segment's poll time. Critical
+        # for staying under Railway's 5-min HTTP proxy timeout.
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        max_workers = min(4, n - 1)
+        logger.info(f"  launching {n-1} Runway segments in parallel "
+                    f"(max_workers={max_workers})")
+        t_par = time.time()
+        with ThreadPoolExecutor(max_workers=max_workers) as ex:
+            futures = [ex.submit(_one_segment, i) for i in range(n - 1)]
+            for fut in as_completed(futures):
+                i, path, reason = fut.result()
+                seg_results[i] = (path, reason)
+        logger.info(f"  Runway parallel done in {time.time() - t_par:.1f}s wall-clock")
+
+        # Re-assemble in order
+        segments_out: list[Path] = []
+        failures: list[tuple[int, str]] = []
+        for i in range(n - 1):
+            path, reason = seg_results.get(i, (None, "missing"))
+            if path is not None:
+                segments_out.append(path)
+            if reason is not None:
+                failures.append((i, reason))
 
         if not segments_out:
             # All segments failed — surface a clean error instead of silent empty mp4

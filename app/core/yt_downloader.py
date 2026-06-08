@@ -71,7 +71,19 @@ def download_video(url: str, out_dir: Optional[Path] = None) -> tuple[Path, dict
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=True)
     except Exception as e:
-        raise DownloadError(f"yt-dlp {type(e).__name__}: {str(e)[:300]}")
+        err_str = str(e)
+        low = err_str.lower()
+        # IG with no cookies regularly returns "rate-limit reached or login
+        # required" — surface a friendlier message and a workaround.
+        if "instagram" in url.lower() and (
+            "rate-limit" in low or "login required" in low or "cookies" in low
+        ):
+            raise DownloadError(
+                "Instagram заблокировал скачивание (rate-limit / нужны cookies). "
+                "Скачай ролик вручную через любой ig-downloader и попробуй стратегию A "
+                "с загрузкой MP4-файла, либо найди тот же контент в TikTok/YouTube Shorts."
+            )
+        raise DownloadError(f"yt-dlp {type(e).__name__}: {err_str[:300]}")
 
     # Найти скачанный файл
     mp4s = list(workdir.glob("video.*"))
@@ -80,6 +92,16 @@ def download_video(url: str, out_dir: Optional[Path] = None) -> tuple[Path, dict
         raise DownloadError(f"yt-dlp finished but no mp4 in {workdir}")
 
     file = mp4s[0]
+    # Sanity check: yt-dlp occasionally writes a 0-byte / few-byte stub
+    # when IG returns a degraded response, which then breaks ffmpeg
+    # downstream and surfaces as 'empty result' in the UI.
+    size = file.stat().st_size
+    if size < 10_000:  # <10KB → definitely not a real reel
+        raise DownloadError(
+            f"yt-dlp скачал {size} байт — это не валидный MP4. "
+            "Скорее всего платформа отдала заглушку (особенно частая проблема "
+            "у Instagram). Попробуй TikTok/YouTube ссылку или загрузи MP4 вручную."
+        )
     meta = {
         "title": (info.get("title") or "")[:255],
         "uploader": info.get("uploader") or info.get("channel"),

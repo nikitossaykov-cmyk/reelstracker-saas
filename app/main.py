@@ -104,6 +104,48 @@ def cleanup_duplicate_reels():
         db.close()
 
 
+def migrate_legacy_media_urls():
+    """One-shot: rewrite gv.media_url / gv.uniq_media_url for rows that
+    still hold a raw R2 presigned URL.  After PR #16 we store
+    /api/media?key=<storage_key>, which is stable. Older rows have
+    expired presigned URLs that no longer play. This converts them in
+    bulk on startup. Idempotent — safe to call repeatedly.
+    """
+    from app.database import SessionLocal
+    from app.models.generation import GeneratedVideo
+    from sqlalchemy import or_
+
+    db = SessionLocal()
+    try:
+        rows = (db.query(GeneratedVideo)
+                .filter(or_(GeneratedVideo.media_storage_key.isnot(None),
+                            GeneratedVideo.uniq_storage_key.isnot(None)))
+                .all())
+        n_media = 0
+        n_uniq = 0
+        for gv in rows:
+            if gv.media_storage_key and (
+                not gv.media_url or not gv.media_url.startswith("/api/media")
+            ):
+                gv.media_url = f"/api/media?key={gv.media_storage_key}"
+                n_media += 1
+            if gv.uniq_storage_key and (
+                not gv.uniq_media_url or not gv.uniq_media_url.startswith("/api/media")
+            ):
+                gv.uniq_media_url = f"/api/media?key={gv.uniq_storage_key}"
+                n_uniq += 1
+        if n_media or n_uniq:
+            db.commit()
+            logger.info(
+                f"🔁 migrate_legacy_media_urls: rewrote {n_media} media_url "
+                f"+ {n_uniq} uniq_media_url to proxy form"
+            )
+    except Exception as e:
+        logger.warning(f"migrate_legacy_media_urls skipped: {e}")
+    finally:
+        db.close()
+
+
 def reset_stuck_jobs():
     """Сброс зависших задач (RUNNING без завершения)"""
     from app.database import SessionLocal
@@ -254,6 +296,10 @@ async def lifespan(app: FastAPI):
 
     # Одноразовая чистка дубликатных позиций (instagram_account_id не трогаем)
     cleanup_duplicate_reels()
+
+    # Convert any legacy raw R2 media_urls to the stable /api/media proxy
+    # form. Idempotent — rows already on proxy form are skipped.
+    migrate_legacy_media_urls()
 
     # Idempotent: encrypt any plaintext OAuth tokens left from pre-Fernet rows.
     # Silently skipped if OAUTH_TOKEN_FERNET_KEY not set (first deploy).

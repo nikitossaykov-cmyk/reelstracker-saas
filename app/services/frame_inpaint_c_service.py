@@ -295,7 +295,20 @@ def _runway_pair_to_segment(
                 return output
             raise StrategyCError(f"Runway SUCCEEDED but no output: {b}")
         if status in ("FAILED", "CANCELLED"):
-            raise StrategyCError(f"Runway task {status}: {b.get('failure') or b}")
+            failure_msg = b.get("failure") or b.get("failureCode") or "unknown"
+            failure_low = str(failure_msg).lower()
+            if "moderat" in failure_low or "safety" in failure_low or "content polic" in failure_low:
+                raise StrategyCError(
+                    "🛑 Runway модерация отбила кадр (вероятно gpt-image-1 "
+                    "сгенерил кадр с лицом крупным планом или другой sensitive контент)"
+                )
+            if "unexpected error" in failure_low:
+                raise StrategyCError(
+                    "❓ Runway: внутренняя ошибка на их стороне "
+                    "(временный сбой Runway, не наш код). "
+                    "Подожди минуту и попробуй ещё раз."
+                )
+            raise StrategyCError(f"Runway task {status}: {failure_msg}")
     raise StrategyCError(f"Runway poll timeout after {max_wait_sec}s")
 
 
@@ -343,30 +356,73 @@ def _smooth_via_runway(
         per_segment_sec = max(1.0, total_duration / (n - 1))
         # Runway clamps to 5 or 10 sec — pick smaller bucket if our gap is short.
         segments_out: list[Path] = []
-        for i in range(n - 1):
-            seg_path = workdir / f"runway_seg_{i:02d}.mp4"
-            logger.info(f"  runway segment {i+1}/{n-1} "
-                        f"(target {per_segment_sec:.1f}s)")
-            seg_url = _runway_pair_to_segment(
-                runway_api_key,
-                start_url=kf_urls[i],
-                end_url=kf_urls[i + 1],
-                duration_sec=int(per_segment_sec) if per_segment_sec >= 5 else 5,
-                prompt=runway_prompt,
-            )
-            _download_to(seg_url, seg_path)
-            # trim to per_segment_sec if Runway gave us a longer 5s/10s clip
-            trimmed = workdir / f"runway_seg_{i:02d}_trim.mp4"
-            tr = subprocess.run(
+        failures: list[tuple[int, str]] = []  # (idx, reason)
+
+        def _still_segment_from(png_path: Path, dst: Path, sec: float) -> bool:
+            """Loop one PNG as a static N-second video. Fallback when
+            Runway fails on a particular keyframe."""
+            r = subprocess.run(
                 ["ffmpeg", "-y", "-loglevel", "error",
-                 "-i", str(seg_path), "-t", f"{per_segment_sec:.3f}",
-                 "-c:v", "libx264", "-an", str(trimmed)],
+                 "-loop", "1", "-t", f"{sec:.3f}",
+                 "-i", str(png_path),
+                 "-vf", "scale=720:1280:force_original_aspect_ratio=decrease,"
+                        "pad=720:1280:(ow-iw)/2:(oh-ih)/2:black,fps=30",
+                 "-c:v", "libx264", "-pix_fmt", "yuv420p", "-an",
+                 str(dst)],
                 capture_output=True, text=True, timeout=120, check=False,
             )
-            if tr.returncode != 0:
-                # fall back to untrimmed if trim fails
-                shutil.copy(seg_path, trimmed)
-            segments_out.append(trimmed)
+            return r.returncode == 0 and dst.exists()
+
+        for i in range(n - 1):
+            seg_path = workdir / f"runway_seg_{i:02d}.mp4"
+            trimmed = workdir / f"runway_seg_{i:02d}_trim.mp4"
+            logger.info(f"  runway segment {i+1}/{n-1} "
+                        f"(target {per_segment_sec:.1f}s) "
+                        f"start={kf_urls[i][:80]}")
+            try:
+                seg_url = _runway_pair_to_segment(
+                    runway_api_key,
+                    start_url=kf_urls[i],
+                    end_url=kf_urls[i + 1],
+                    duration_sec=int(per_segment_sec) if per_segment_sec >= 5 else 5,
+                    prompt=runway_prompt,
+                )
+                _download_to(seg_url, seg_path)
+                tr = subprocess.run(
+                    ["ffmpeg", "-y", "-loglevel", "error",
+                     "-i", str(seg_path), "-t", f"{per_segment_sec:.3f}",
+                     "-c:v", "libx264", "-an", str(trimmed)],
+                    capture_output=True, text=True, timeout=120, check=False,
+                )
+                if tr.returncode != 0:
+                    shutil.copy(seg_path, trimmed)
+                segments_out.append(trimmed)
+            except StrategyCError as e:
+                # Per-segment failure (Runway moderation, transient error, etc):
+                # substitute a still image of the start frame so the timeline
+                # stays intact and the whole pipeline doesn't blow up.
+                logger.warning(
+                    f"  runway segment {i+1}/{n-1} failed ({e}); "
+                    f"using still frame fallback"
+                )
+                failures.append((i, str(e)[:200]))
+                if _still_segment_from(edited_pngs[i], trimmed, per_segment_sec):
+                    segments_out.append(trimmed)
+                else:
+                    logger.error(f"  still-fallback for segment {i+1} ALSO failed; skipping")
+
+        if not segments_out:
+            # All segments failed — surface a clean error instead of silent empty mp4
+            reasons = "; ".join(f"#{i+1}: {r}" for i, r in failures[:3])
+            raise StrategyCError(
+                f"Все {n-1} Runway-сегмента упали. Первые ошибки: {reasons}. "
+                "Часто причина — модерация Runway на сгенерированный кадр; "
+                "попробуй другой ролик или сними галочку 🎬 C+ (без него работает на ffmpeg)."
+            )
+        if failures:
+            logger.warning(
+                f"strategy C+: {len(failures)}/{n-1} segments fell back to still frames"
+            )
 
         # Stitch segments with xfade to soften the start-frame-only jumps
         # between segments. (When we upgrade to real keyframe control we

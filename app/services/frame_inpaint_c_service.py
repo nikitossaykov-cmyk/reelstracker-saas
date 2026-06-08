@@ -458,14 +458,19 @@ def _smooth_via_runway(
             for seg in segments_out:
                 cmd += ["-i", str(seg)]
             cmd += ["-i", str(audio_src)]
+            # Runway / ffmpeg returns clips with different timebases
+            # (1/15360 vs 1/12288 etc) — xfade requires identical timebase.
+            # Pre-normalize every input to fps=30 + AVTB (1/AV_TIME_BASE).
             filters = []
-            prev = "0:v"
+            for i in range(len(segments_out)):
+                filters.append(f"[{i}:v]fps=30,settb=AVTB,format=yuv420p[v{i}n]")
+            prev = "v0n"
             cumulative = per_segment_sec
             for i in range(1, len(segments_out)):
                 offset = cumulative - transition
-                out_label = f"v{i}"
+                out_label = f"x{i}"
                 filters.append(
-                    f"[{prev}][{i}:v]xfade=transition=fade"
+                    f"[{prev}][v{i}n]xfade=transition=fade"
                     f":duration={transition:.4f}:offset={offset:.4f}[{out_label}]"
                 )
                 prev = out_label

@@ -84,11 +84,15 @@ class R2Storage:
         except Exception as e:
             logger.warning(f"R2 delete '{key}' failed: {e}")
 
-    def get_public_url(self, key: str) -> str:
+    def get_public_url(self, key: str, http_method: str = "GET") -> str:
         """Вернуть публично-достижимый URL.
 
+        S3/R2 presigned URLs are method-scoped: a URL signed for GET
+        returns 403 on HEAD and vice versa. Pass `http_method="HEAD"`
+        when you need a URL that the browser can probe for metadata.
+
         Если задан R2_PUBLIC_BASE_URL (Cloudflare CDN на custom domain) —
-        склеиваем с ним. Иначе генерим presigned URL с TTL.
+        склеиваем с ним (там method-skew не проблема).
 
         ⚠️ Эту функцию НЕ сохранять в БД и НЕ возвращать в UI напрямую —
         presigned URLs протухают за <7 дней и видео ломается. Для UI
@@ -97,8 +101,9 @@ class R2Storage:
         """
         if self.public_base_url:
             return urljoin(self.public_base_url, key)
+        op = "head_object" if http_method.upper() == "HEAD" else "get_object"
         return self._client.generate_presigned_url(
-            "get_object",
+            op,
             Params={"Bucket": self.bucket, "Key": key},
             ExpiresIn=self.presigned_ttl_seconds,
         )

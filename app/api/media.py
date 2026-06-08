@@ -30,6 +30,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+# HTML5 <video> sends a HEAD request first for metadata (Content-Length,
+# Accept-Ranges). If we 405 on HEAD, the player gives up and shows 0:00.
+# Same redirect logic for both verbs.
+@router.head("")
 @router.get("")
 def media_redirect(key: str, db: Session = Depends(get_db)):
     """Lookup key in GV.media_storage_key / GV.uniq_storage_key /

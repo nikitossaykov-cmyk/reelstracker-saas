@@ -31,7 +31,7 @@ from app.models.generation import VideoProvider
 router = APIRouter()
 
 
-Strategy = Literal["A", "B", "C"]
+Strategy = Literal["A", "B", "C", "D"]
 
 
 class ForgeStartRequest(BaseModel):
@@ -52,6 +52,10 @@ class ForgeStartRequest(BaseModel):
     # C-specific (frame edit)
     c_keyframe_count: int = Field(5, ge=3, le=30)
     c_smooth_transitions: bool = False  # PR-6: Runway image_to_video between keyframes
+    # D-specific (react / hook+AI)
+    d_hook_seconds: float = Field(5.0, ge=2.0, le=10.0)
+    d_tts_voice: str = Field("nova", max_length=32)
+    face_description: Optional[str] = Field(None, max_length=512)
 
 
 class ForgeStartResponse(BaseModel):
@@ -83,6 +87,9 @@ def _estimate_cost(strategy: Strategy, duration_seconds: int, model: Optional[st
             # (N-1) runway segments × ≥5s × $0.05/s
             base += (c_keyframe_count - 1) * 5 * 0.05
         return round(base, 3)
+    if strategy == "D":
+        # 2 gpt-image-1 keyframes + tts-1 + LLM + Whisper
+        return 0.10
     return 0.0
 
 
@@ -170,6 +177,28 @@ def forge_start(
             raise HTTPException(502, detail=f"strategy C: {e}")
         return ForgeStartResponse(
             strategy="C",
+            gv_id=gv_id,
+            next_step=f"poll GET /api/media/diag/{gv_id} until status=ready",
+            cost_estimate_usd=cost,
+        )
+
+    if data.strategy == "D":
+        from app.services.react_d_service import start_strategy_d_async, StrategyDError
+        try:
+            gv_id = start_strategy_d_async(
+                db, current_user,
+                source_url=data.source_url,
+                brand=data.brand,
+                product_description=data.product_description,
+                face_description=data.face_description,
+                extra_instructions=data.extra_instructions,
+                hook_seconds=data.d_hook_seconds,
+                tts_voice=data.d_tts_voice,
+            )
+        except StrategyDError as e:
+            raise HTTPException(502, detail=f"strategy D: {e}")
+        return ForgeStartResponse(
+            strategy="D",
             gv_id=gv_id,
             next_step=f"poll GET /api/media/diag/{gv_id} until status=ready",
             cost_estimate_usd=cost,

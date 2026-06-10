@@ -19,9 +19,7 @@ import os
 import subprocess
 import tempfile
 import uuid
-from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +125,7 @@ def voice_clone_to_r2(
     language: str = "ru",
 ) -> tuple[str, str]:
     """Voice clone + сразу залить в R2. Возвращает (storage_key, public_url)."""
-    workdir = Path(tempfile.mkdtemp(prefix=f"xtts_r2_"))
+    workdir = Path(tempfile.mkdtemp(prefix="xtts_r2_"))
     out_wav = workdir / "vo.wav"
     try:
         voice_clone(text, ref_voice_local, out_wav, language=language)

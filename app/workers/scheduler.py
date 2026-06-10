@@ -14,7 +14,7 @@ from app.models.user import User
 from app.models.reel import Reel
 from app.models.account import InstagramAccount
 from app.models.parsing import ParseJob, JobStatus
-from app.services.tariff_service import get_parse_interval, get_priority
+from app.services.tariff_service import get_parse_interval
 from app.services.parsing_service import create_parse_job, create_account_sync_job
 
 logger = logging.getLogger(__name__)

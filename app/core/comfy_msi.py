@@ -49,7 +49,7 @@ class ComfyWorkflowError(Exception):
 
 
 def _ssh(cmd: str, capture: bool = True, timeout: int = 60) -> subprocess.CompletedProcess:
-    full = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", f"ConnectTimeout=10",
+    full = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=10",
             f"{MSI_SSH_USER}@{MSI_HOST}", cmd]
     return subprocess.run(full, capture_output=capture, text=True, timeout=timeout, check=False)
 

@@ -32,9 +32,8 @@ from sqlalchemy.orm import Session
 from app.models.reel import Reel
 from app.models.user import User
 from app.models.recipe import ContentRecipe
-from app.models.generation import GeneratedVideo, GenerationStatus, VideoProvider
+from app.models.generation import GeneratedVideo, GenerationStatus
 from app.core.video_providers import get_provider, GenerationRequest, ProviderJobStatus
-from app.core.scene_classifier import classify_scenes
 from app.core.composer import RemakeParams
 
 logger = logging.getLogger(__name__)
@@ -338,7 +337,7 @@ def execute_hybrid_remake(
         logger.info(f"hybrid concat done: {final.stat().st_size//1024} KB")
 
         # Cost breakdown (PR #23)
-        from app.core.cost_calculator import cost_breakdown, RUNWAY_USD_CENTS_PER_SEC
+        from app.core.cost_calculator import cost_breakdown
         chunks_data = []
         for meta in segments_meta:
             if meta["strategy"] == "regenerate":

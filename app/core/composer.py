@@ -91,6 +91,6 @@ def build_prompt_from_recipe_dict(recipe_dict: dict, params: RemakeParams) -> st
     parts.append("Featuring [FACE] as the on-camera person and [PRODUCT] as the product.")
     parts.append("Setting: [LOCATION]. Outfit: [OUTFIT]. Palette: [PALETTE].")
     if params.extra_instructions:
-        parts.append(f"Additional: [INSTRUCTIONS].")
+        parts.append("Additional: [INSTRUCTIONS].")
     text = "\n".join(parts)
     return render_prompt(text, params)

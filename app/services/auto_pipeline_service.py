@@ -28,7 +28,7 @@ from sqlalchemy.orm import Session
 from app.models.user import User
 from app.models.reel import Reel, ReelHistory
 from app.models.account import InstagramAccount
-from app.models.generation import GeneratedVideo, GenerationStatus, VideoProvider, Post
+from app.models.generation import GeneratedVideo, GenerationStatus, VideoProvider
 from app.models.recipe import ContentRecipe
 
 logger = logging.getLogger(__name__)

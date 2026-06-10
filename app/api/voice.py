@@ -2,11 +2,10 @@
 Voice clone API — XTTS-v2 на MSI.
 """
 
-from typing import Optional
 from pathlib import Path
 import tempfile
 
-from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Form
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 

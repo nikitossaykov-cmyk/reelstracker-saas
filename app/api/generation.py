@@ -3,7 +3,7 @@ API для генерации видео: POST /api/generation, GET список
 """
 
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query, File, UploadFile, Form
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -101,7 +101,6 @@ async def face_swap_generation(
     Результат пишется в uniq_storage_key (поскольку это та же сущность —
     модифицированная копия media). Оригинал остаётся в media_storage_key.
     """
-    from fastapi import UploadFile
     from pathlib import Path
     import tempfile
     gv = get_generation_by_id(db, generation_id, current_user)

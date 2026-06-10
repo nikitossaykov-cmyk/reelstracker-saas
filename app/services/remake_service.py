@@ -89,7 +89,7 @@ def create_remake_job(
     # PR #20 — image-to-video: первый кадр источника проложен в generator
     if params.init_image_url:
         provider_params["init_image_url"] = params.init_image_url
-        logger.info(f"remake using init_image_url for image-to-video")
+        logger.info("remake using init_image_url for image-to-video")
 
     gv = GeneratedVideo(
         user_id=user.id,

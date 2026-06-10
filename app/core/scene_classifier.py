@@ -24,7 +24,6 @@ import base64
 import json
 import logging
 import subprocess
-import tempfile
 from pathlib import Path
 from typing import Optional
 

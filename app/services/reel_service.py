@@ -2,7 +2,7 @@
 Сервис для работы с рилсами: CRUD + бизнес-логика
 """
 
-from typing import List, Optional
+from typing import List
 from sqlalchemy.orm import Session, joinedload
 from fastapi import HTTPException, status
 

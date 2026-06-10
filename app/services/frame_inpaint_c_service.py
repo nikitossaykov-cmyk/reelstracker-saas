@@ -645,3 +645,142 @@ def run_strategy_c(
             shutil.rmtree(workdir, ignore_errors=True)
         except OSError:
             pass
+
+
+# ─── Async wrapper ─────────────────────────────────────────
+
+# A single worker pool shared by all requests. C/C+ runs are CPU+IO
+# heavy so we keep this small — most concurrency wins come from the
+# inner ThreadPool that parallelises Runway segments.
+_c_executor = None
+
+def _get_c_executor():
+    global _c_executor
+    if _c_executor is None:
+        from concurrent.futures import ThreadPoolExecutor
+        _c_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="forge_c")
+    return _c_executor
+
+
+def _async_run_strategy_c(
+    user_id: int,
+    *,
+    source_url: str,
+    brand: Optional[str],
+    product_description: Optional[str],
+    extra_instructions: Optional[str],
+    keyframe_count: int,
+    smooth_transitions: bool,
+    gv_id: int,
+):
+    """Background-thread entry. Opens its own DB session (the API session
+    is closed by the time we run), updates the pre-created GV row to
+    READY on success or FAILED with error_message on any exception.
+    """
+    from app.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            logger.error(f"async_strategy_c: user #{user_id} disappeared")
+            return
+        gv = db.query(GeneratedVideo).filter(GeneratedVideo.id == gv_id).first()
+        if not gv:
+            logger.error(f"async_strategy_c: gv #{gv_id} disappeared")
+            return
+        try:
+            result = run_strategy_c(
+                db, user,
+                source_url=source_url,
+                brand=brand,
+                product_description=product_description,
+                extra_instructions=extra_instructions,
+                keyframe_count=keyframe_count,
+                smooth_transitions=smooth_transitions,
+            )
+            # run_strategy_c creates its OWN gv row. Migrate the result
+            # onto our pre-created placeholder so the caller's gv_id is
+            # the one that ends up READY, and drop the duplicate.
+            placeholder = gv
+            real = db.query(GeneratedVideo).filter(
+                GeneratedVideo.id == result["gv_id"]
+            ).first()
+            if real and real.id != placeholder.id:
+                placeholder.media_url = real.media_url
+                placeholder.media_storage_key = real.media_storage_key
+                placeholder.provider = real.provider
+                placeholder.status = real.status
+                placeholder.completed_at = real.completed_at
+                placeholder.prompt = real.prompt
+                db.delete(real)
+                db.commit()
+                logger.info(
+                    f"async_strategy_c: gv #{placeholder.id} READY "
+                    f"(squashed real #{real.id})"
+                )
+            else:
+                db.commit()
+        except StrategyCError as e:
+            gv.status = GenerationStatus.FAILED
+            gv.error_message = str(e)[:1000]
+            gv.completed_at = datetime.utcnow()
+            db.commit()
+            logger.warning(f"async_strategy_c: gv #{gv.id} FAILED: {e}")
+        except Exception as e:
+            gv.status = GenerationStatus.FAILED
+            gv.error_message = f"{type(e).__name__}: {str(e)[:900]}"
+            gv.completed_at = datetime.utcnow()
+            db.commit()
+            logger.exception(f"async_strategy_c: gv #{gv.id} crashed")
+    finally:
+        db.close()
+
+
+def start_strategy_c_async(
+    db: Session,
+    user: User,
+    *,
+    source_url: str,
+    brand: Optional[str] = None,
+    product_description: Optional[str] = None,
+    extra_instructions: Optional[str] = None,
+    keyframe_count: int = 5,
+    smooth_transitions: bool = False,
+) -> int:
+    """Validate args, create a PENDING GeneratedVideo, submit the heavy
+    work to the background pool, return the gv_id immediately so the
+    HTTP caller can return inside Railway's proxy timeout.
+    """
+    if not user.openai_api_key:
+        raise StrategyCError("Strategy C нужен openai_api_key в профиле")
+    if smooth_transitions and not user.runway_api_key:
+        raise StrategyCError(
+            "C+ smooth_transitions нужен runway_api_key в профиле "
+            "(сними галочку 🎬 если не хочешь использовать Runway)"
+        )
+
+    gv = GeneratedVideo(
+        user_id=user.id,
+        provider=VideoProvider.RUNWAY if smooth_transitions else VideoProvider.MOCK,
+        status=GenerationStatus.RUNNING,
+        prompt=f"[strategy=C N={keyframe_count}{' +runway' if smooth_transitions else ''}] source={source_url}",
+    )
+    db.add(gv)
+    db.commit()
+    db.refresh(gv)
+    gv_id = gv.id
+
+    _get_c_executor().submit(
+        _async_run_strategy_c,
+        user.id,
+        source_url=source_url,
+        brand=brand,
+        product_description=product_description,
+        extra_instructions=extra_instructions,
+        keyframe_count=keyframe_count,
+        smooth_transitions=smooth_transitions,
+        gv_id=gv_id,
+    )
+    logger.info(f"start_strategy_c_async: gv #{gv_id} queued (smooth={smooth_transitions})")
+    return gv_id

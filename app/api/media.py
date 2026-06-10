@@ -54,6 +54,7 @@ def diag_gv(gv_id: int, db: Session = Depends(get_db)):
         "uniq_storage_key": gv.uniq_storage_key,
         "uniq_media_url": gv.uniq_media_url,
         "completed_at": gv.completed_at.isoformat() if gv.completed_at else None,
+        "error_message": getattr(gv, "error_message", None),
     }
     if gv.media_storage_key:
         try:

@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Настройки — Reelstracker</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { background: radial-gradient(circle at 30% 20%, #1a0a2e 0%, #0a0a0a 60%); color: #e5e5e5; font-family: -apple-system, BlinkMacSystemFont, sans-serif; min-height: 100vh; }
+  .glass { background: rgba(255,255,255,0.04); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.08); }
+  .btn-magic { background: linear-gradient(135deg, #7c3aed 0%, #ec4899 50%, #f59e0b 100%); box-shadow: 0 4px 30px rgba(168, 85, 247, 0.4); }
+  .btn-magic:hover { transform: translateY(-1px); box-shadow: 0 6px 40px rgba(168, 85, 247, 0.6); }
+  .btn-magic:disabled { opacity: 0.5; cursor: not-allowed; }
+</style>
+</head>
+<body class="p-4">
+
+<div class="max-w-2xl mx-auto pt-8">
+  <header class="mb-8 flex items-baseline justify-between">
+    <h1 class="text-2xl font-bold">⚙️ Настройки</h1>
+    <div class="flex gap-4 text-sm">
+      <a href="/forge" class="text-purple-400 hover:text-purple-300">← Forge</a>
+      <a href="/tracker.html" class="text-gray-500 hover:text-white">📊 Tracker</a>
+      <button id="logout-btn" class="text-gray-500 hover:text-white">Выйти</button>
+    </div>
+  </header>
+
+  <section class="glass rounded-2xl p-6 mb-6">
+    <h2 class="text-lg font-semibold mb-3">🔑 API-ключи провайдеров</h2>
+    <p class="text-xs text-gray-400 mb-5">
+      Ключи хранятся в твоей записи в БД и используются только для запросов от твоего имени.
+      Никуда наружу не отдаются. Оставь поле пустым чтобы оставить как есть; нажми «🗑 Удалить» чтобы стереть.
+    </p>
+
+    <div id="status" class="text-xs mb-4 text-gray-400">Загружаю...</div>
+
+    <div class="mb-5">
+      <label class="block text-sm text-gray-300 mb-1 font-medium">OpenAI API key</label>
+      <div class="text-xs text-gray-500 mb-2">Нужен для: Magic-стратегия (Whisper + Vision + recipe), Account Insights, B-стратегия (LLM перепись субтитров), C-стратегия (gpt-image-1 inpaint). Формат <code>sk-proj-...</code> или <code>sk-...</code>. Взять на <a href="https://platform.openai.com/api-keys" target="_blank" class="text-purple-400 underline">platform.openai.com/api-keys</a>.</div>
+      <div class="flex gap-2">
+        <input id="openai-input" type="password" placeholder="sk-..." class="flex-1 bg-black/40 border border-white/10 px-3 py-2 rounded text-sm font-mono" />
+        <button onclick="clearKey('openai')" class="px-3 py-2 text-xs bg-red-900/40 hover:bg-red-900/60 rounded">🗑</button>
+      </div>
+    </div>
+
+    <div class="mb-5">
+      <label class="block text-sm text-gray-300 mb-1 font-medium">Runway API key</label>
+      <div class="text-xs text-gray-500 mb-2">Нужен для: Magic-стратегия (image-to-video), C+ стратегия (плавные переходы). Формат <code>key_...</code>. Взять на <a href="https://dev.runwayml.com" target="_blank" class="text-purple-400 underline">dev.runwayml.com</a> → Account → API.</div>
+      <div class="flex gap-2">
+        <input id="runway-input" type="password" placeholder="key_..." class="flex-1 bg-black/40 border border-white/10 px-3 py-2 rounded text-sm font-mono" />
+        <button onclick="clearKey('runway')" class="px-3 py-2 text-xs bg-red-900/40 hover:bg-red-900/60 rounded">🗑</button>
+      </div>
+    </div>
+
+    <button id="save-btn" onclick="save()" class="btn-magic w-full py-3 rounded-xl text-sm font-bold text-white">💾 Сохранить</button>
+    <div id="msg" class="text-xs text-center mt-3 h-4"></div>
+  </section>
+</div>
+
+<script>
+const API = '/api/auth/me/keys';
+function getAccess() { return localStorage.getItem('access_token'); }
+function hdr() { return {'Authorization': 'Bearer ' + getAccess()}; }
+async function tryRefresh() {
+  const r = localStorage.getItem('refresh_token');
+  if (!r) return false;
+  const resp = await fetch('/api/auth/refresh', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({refresh_token: r})});
+  if (!resp.ok) return false;
+  const d = await resp.json();
+  localStorage.setItem('access_token', d.access_token);
+  localStorage.setItem('refresh_token', d.refresh_token);
+  return true;
+}
+async function authFetch(url, opts = {}) {
+  opts.headers = {...(opts.headers || {}), ...hdr()};
+  let r = await fetch(url, opts);
+  if (r.status === 401) {
+    if (await tryRefresh()) {
+      opts.headers = {...(opts.headers || {}), ...hdr()};
+      r = await fetch(url, opts);
+    } else {
+      localStorage.clear(); location.href = '/login.html';
+    }
+  }
+  return r;
+}
+
+document.getElementById('logout-btn').onclick = () => {localStorage.clear(); location.href = '/login.html';};
+
+async function loadStatus() {
+  const r = await authFetch(API);
+  if (!r.ok) {
+    document.getElementById('status').innerHTML = `<span class="text-red-400">Ошибка загрузки: ${r.status}</span>`;
+    return;
+  }
+  const d = await r.json();
+  const oS = d.openai_set ? `<span class="text-green-400">✅ установлен (${d.openai_preview || ''})</span>` : '<span class="text-yellow-400">⚠️ не задан</span>';
+  const rS = d.runway_set ? `<span class="text-green-400">✅ установлен (${d.runway_preview || ''})</span>` : '<span class="text-yellow-400">⚠️ не задан</span>';
+  document.getElementById('status').innerHTML = `OpenAI: ${oS} · Runway: ${rS}`;
+}
+
+async function save() {
+  const o = document.getElementById('openai-input').value.trim();
+  const r = document.getElementById('runway-input').value.trim();
+  if (!o && !r) {
+    document.getElementById('msg').innerHTML = '<span class="text-yellow-400">Заполни хотя бы одно поле</span>';
+    return;
+  }
+  const body = {};
+  if (o) body.openai_api_key = o;
+  if (r) body.runway_api_key = r;
+  const btn = document.getElementById('save-btn');
+  btn.disabled = true; btn.textContent = '⏳ Сохраняю...';
+  const resp = await authFetch(API, {method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+  btn.disabled = false; btn.textContent = '💾 Сохранить';
+  if (!resp.ok) {
+    const t = await resp.text();
+    document.getElementById('msg').innerHTML = `<span class="text-red-400">Ошибка: ${t.slice(0, 200)}</span>`;
+    return;
+  }
+  document.getElementById('openai-input').value = '';
+  document.getElementById('runway-input').value = '';
+  document.getElementById('msg').innerHTML = '<span class="text-green-400">✅ Сохранено</span>';
+  await loadStatus();
+}
+
+async function clearKey(which) {
+  if (!confirm(`Удалить ${which.toUpperCase()} API key из профиля?`)) return;
+  const body = which === 'openai' ? {openai_api_key: null} : {runway_api_key: null};
+  // null is sent via custom body since JSON.stringify handles it.
+  const resp = await authFetch(API, {method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+  if (resp.ok) {
+    document.getElementById('msg').innerHTML = `<span class="text-green-400">✅ ${which.toUpperCase()} удалён</span>`;
+    await loadStatus();
+  }
+}
+
+loadStatus();
+</script>
+</body>
+</html>

@@ -1,25 +1,26 @@
 """
-Media proxy — выдаёт свежий R2 presigned URL по 302-redirect.
+Media proxy — стримит видео байты прямо из R2 через нашу прокси,
+не редиректит на presigned URL.
 
-Зачем: presigned URLs у R2 живут ≤7 дней. Если сохранять их в БД
-(`gv.media_url = r2.get_public_url(key)`), то через ~неделю
-ссылка протухает с XML-ошибкой ExpiredRequest и видео в UI
-перестаёт играть. Этот endpoint решает проблему — UI всегда
-обращается к `/api/media?key=...`, а мы под капотом генерим
-свежий presigned URL и 302-redirect'им браузер на него.
+История проблемы:
+PR #16-23 пытались отдать видео через 302-redirect на R2 presigned URL.
+В curl это работало, но <video> тег в Chrome/Safari/iOS получал 0:00
+после redirect — почти наверняка из-за того что R2 не отдаёт CORS
+headers нужные video-тегу для cross-origin воспроизведения после
+redirect, и тогда содержимое молча отбраковывается.
 
-Безопасность: key содержит UUID (`users/<id>/forge_b/<uuid>.mp4`),
-перебрать практически невозможно. Кто-то может скачать чужое видео
-только если знает точный storage key — что эквивалентно тому
-что эти ссылки и так публичны (presigned URLs тоже).
+Этот endpoint вместо redirect качает байты из R2 stream'ом и отдаёт
+их клиенту через FastAPI StreamingResponse. Браузер R2 не видит,
+никаких CORS issues, Range requests поддерживаются прозрачно.
 """
 from __future__ import annotations
 
 import logging
-from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import RedirectResponse
+from typing import Optional
+
+from fastapi import APIRouter, HTTPException, Request, Depends
+from fastapi.responses import StreamingResponse, Response
 from sqlalchemy.orm import Session
-from fastapi import Depends
 
 from app.database import get_db
 from app.models.generation import GeneratedVideo
@@ -30,16 +31,47 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-# HTML5 <video> sends HEAD first for metadata, then GET (with Range) to
-# stream. R2 presigned URLs are method-scoped, so we have to mint a
-# different URL depending on what the browser asked for — same URL
-# signed for GET returns 403 on HEAD and vice versa.
+def _verify_key_in_db(key: str, db: Session) -> bool:
+    """Confirm the key actually belongs to something in our DB so a
+    randomly-guessed key can't pull arbitrary objects from the bucket."""
+    has_gv = (db.query(GeneratedVideo)
+              .filter((GeneratedVideo.media_storage_key == key) |
+                      (GeneratedVideo.uniq_storage_key == key))
+              .first() is not None)
+    if has_gv:
+        return True
+    has_reel = (db.query(Reel)
+                .filter(Reel.media_storage_key == key)
+                .first() is not None)
+    return has_reel
+
+
+def _parse_range(header: Optional[str], size: int) -> Optional[tuple[int, int]]:
+    """Parse a single 'bytes=start-end' Range header. Returns (start, end)
+    inclusive. None if header missing or unparseable."""
+    if not header or not header.startswith("bytes="):
+        return None
+    try:
+        spec = header[6:].split(",")[0]
+        start_s, end_s = spec.split("-", 1)
+        if start_s == "":
+            # bytes=-N → last N bytes
+            n = int(end_s)
+            return max(0, size - n), size - 1
+        start = int(start_s)
+        end = int(end_s) if end_s else size - 1
+        if end >= size:
+            end = size - 1
+        if start > end:
+            return None
+        return start, end
+    except (ValueError, IndexError):
+        return None
+
+
 @router.get("/diag/{gv_id}")
 def diag_gv(gv_id: int, db: Session = Depends(get_db)):
-    """Безопасный inspector — отдаёт все важные поля по GV и состояние
-    объекта в R2 (HEAD + GET status). Не требует auth — gv_id это
-    предсказуемый int, но кроме metadata ничего вернуть нельзя.
-    """
+    """Inspector — returns full GV state + R2 head_object metadata."""
     gv = db.query(GeneratedVideo).filter(GeneratedVideo.id == gv_id).first()
     if not gv:
         raise HTTPException(404, detail=f"gv #{gv_id} not found")
@@ -72,27 +104,90 @@ def diag_gv(gv_id: int, db: Session = Depends(get_db)):
     return out
 
 
+def _head_response(key: str, db: Session):
+    if not _verify_key_in_db(key, db):
+        raise HTTPException(404, detail="key not found")
+    try:
+        from app.core.storage import get_r2
+        r2 = get_r2()
+        head = r2._client.head_object(Bucket=r2.bucket, Key=key)
+    except Exception as e:
+        logger.exception("HEAD head_object failed")
+        raise HTTPException(502, detail=f"R2 unavailable: {e}")
+    size = int(head.get("ContentLength") or 0)
+    return Response(
+        status_code=200,
+        headers={
+            "Content-Length": str(size),
+            "Content-Type": head.get("ContentType") or "video/mp4",
+            "Accept-Ranges": "bytes",
+            "Cache-Control": "public, max-age=3600",
+        },
+    )
+
+
 @router.head("")
+def media_head(key: str, db: Session = Depends(get_db)):
+    return _head_response(key, db)
+
+
 @router.get("")
-def media_redirect(key: str, request: Request, db: Session = Depends(get_db)):
+def media_stream(key: str, request: Request, db: Session = Depends(get_db)):
+    """Stream R2 bytes through our server. Supports Range so HTML5
+    <video> can seek and start playback before the full file arrives."""
     if not key or "/" not in key or ".." in key:
         raise HTTPException(400, detail="invalid key")
-
-    found = (db.query(GeneratedVideo)
-             .filter((GeneratedVideo.media_storage_key == key) |
-                     (GeneratedVideo.uniq_storage_key == key))
-             .first())
-    if not found:
-        found = (db.query(Reel)
-                 .filter(Reel.media_storage_key == key)
-                 .first())
-    if not found:
+    if not _verify_key_in_db(key, db):
         raise HTTPException(404, detail="key not found")
 
     try:
         from app.core.storage import get_r2
-        url = get_r2().get_public_url(key, http_method=request.method)
+        r2 = get_r2()
+        head = r2._client.head_object(Bucket=r2.bucket, Key=key)
     except Exception as e:
-        logger.exception("media_redirect get_public_url failed")
+        logger.exception("GET head_object failed")
         raise HTTPException(502, detail=f"R2 unavailable: {e}")
-    return RedirectResponse(url, status_code=302)
+
+    size = int(head.get("ContentLength") or 0)
+    content_type = head.get("ContentType") or "video/mp4"
+
+    range_header = request.headers.get("range")
+    rng = _parse_range(range_header, size)
+
+    s3_kwargs = {"Bucket": r2.bucket, "Key": key}
+    if rng:
+        start, end = rng
+        s3_kwargs["Range"] = f"bytes={start}-{end}"
+        try:
+            obj = r2._client.get_object(**s3_kwargs)
+        except Exception as e:
+            logger.exception("ranged get_object failed")
+            raise HTTPException(502, detail=f"R2 range: {e}")
+        length = end - start + 1
+        headers = {
+            "Content-Range": f"bytes {start}-{end}/{size}",
+            "Content-Length": str(length),
+            "Content-Type": content_type,
+            "Accept-Ranges": "bytes",
+            "Cache-Control": "public, max-age=3600",
+        }
+        return StreamingResponse(
+            obj["Body"].iter_chunks(chunk_size=64 * 1024),
+            status_code=206, headers=headers, media_type=content_type,
+        )
+
+    try:
+        obj = r2._client.get_object(**s3_kwargs)
+    except Exception as e:
+        logger.exception("get_object failed")
+        raise HTTPException(502, detail=f"R2 get: {e}")
+    headers = {
+        "Content-Length": str(size),
+        "Content-Type": content_type,
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "public, max-age=3600",
+    }
+    return StreamingResponse(
+        obj["Body"].iter_chunks(chunk_size=64 * 1024),
+        status_code=200, headers=headers, media_type=content_type,
+    )

@@ -284,30 +284,47 @@ def _bridge_card(caption: str, duration: float, out_path: Path) -> None:
 
 
 def _concat_three(parts: list[Path], out: Path) -> None:
-    """Concat 3 parts; bridge has no audio so we use a filter_complex concat."""
+    """Concat N parts (any of them silent — we synthesize a matching
+    silent audio track for bridge). ffmpeg concat filter expects
+    interleaved [v0][a0][v1][a1]... inputs, NOT separate v/a chains.
+    """
     cmd = ["ffmpeg", "-y", "-loglevel", "error"]
+    # First N inputs are the videos themselves
     for p in parts:
         cmd += ["-i", str(p)]
-    parts_filter = []
+    # Add a silent stereo audio source for the bridge (input index = N).
+    bridge_idx = 1  # in our 3-part flow [hook, bridge, ai] bridge is index 1
+    bridge_dur = _probe_duration(parts[bridge_idx])
+    cmd += ["-f", "lavfi", "-t", f"{bridge_dur:.3f}",
+            "-i", "anullsrc=channel_layout=stereo:sample_rate=44100"]
+    silent_idx = len(parts)
+
+    filters = []
     for i, p in enumerate(parts):
-        parts_filter.append(
+        filters.append(
             f"[{i}:v]scale=720:1280:force_original_aspect_ratio=decrease,"
             f"pad=720:1280:(ow-iw)/2:(oh-ih)/2:black,fps=30,settb=AVTB,format=yuv420p[v{i}]"
         )
-    # Build audio sources — silence for bridge if missing.
-    audio_inputs = []
-    for i, p in enumerate(parts):
-        if i == 1:  # bridge — no audio
-            parts_filter.append(f"aevalsrc=0:d={_probe_duration(p):.3f}[a{i}]")
+    # Audio normalization: real sources via anull; bridge uses silent source.
+    for i in range(len(parts)):
+        if i == bridge_idx:
+            filters.append(
+                f"[{silent_idx}:a]aformat=sample_rates=44100:channel_layouts=stereo,"
+                f"asetpts=PTS-STARTPTS[a{i}]"
+            )
         else:
-            parts_filter.append(f"[{i}:a]anull[a{i}]")
-        audio_inputs.append(f"[a{i}]")
-    vchain = "".join(f"[v{i}]" for i in range(len(parts)))
-    achain = "".join(audio_inputs)
-    parts_filter.append(f"{vchain}{achain}concat=n={len(parts)}:v=1:a=1[vout][aout]")
+            filters.append(
+                f"[{i}:a]aformat=sample_rates=44100:channel_layouts=stereo,"
+                f"asetpts=PTS-STARTPTS[a{i}]"
+            )
+    # Concat filter wants interleaved [v0][a0][v1][a1]…[vN][aN]
+    interleaved = "".join(f"[v{i}][a{i}]" for i in range(len(parts)))
+    filters.append(
+        f"{interleaved}concat=n={len(parts)}:v=1:a=1[vout][aout]"
+    )
 
     cmd += [
-        "-filter_complex", ";".join(parts_filter),
+        "-filter_complex", ";".join(filters),
         "-map", "[vout]", "-map", "[aout]",
         "-c:v", "libx264", "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-b:a", "128k",
@@ -315,7 +332,7 @@ def _concat_three(parts: list[Path], out: Path) -> None:
     ]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=300, check=False)
     if r.returncode != 0 or not out.exists():
-        raise StrategyDError(f"concat ffmpeg rc={r.returncode}: {r.stderr[:400]}")
+        raise StrategyDError(f"concat ffmpeg rc={r.returncode}: {r.stderr[:500]}")
 
 
 # ─── Main entry ─────────────────────────────────────────

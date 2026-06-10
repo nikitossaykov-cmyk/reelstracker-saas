@@ -267,15 +267,22 @@ def _build_ai_segment(
 
 
 def _bridge_card(caption: str, duration: float, out_path: Path) -> None:
-    """1-2 sec card with bridge text on dark background."""
+    """Bridge card WITH silent stereo audio track so concat demuxer can
+    join it with hook/ai segments uniformly."""
     safe = caption.replace("'", "")
     cmd = [
         "ffmpeg", "-y", "-loglevel", "error",
+        # video: solid color with drawtext
         "-f", "lavfi", "-t", f"{duration:.3f}",
         "-i", f"color=c=0x0a0a0a:s=720x1280:r=30",
+        # audio: silent stereo at 44.1kHz, exact same duration
+        "-f", "lavfi", "-t", f"{duration:.3f}",
+        "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
         "-vf", f"drawtext=text='{safe}':fontcolor=white:fontsize=72:"
                f"x=(w-text_w)/2:y=(h-text_h)/2:box=1:boxcolor=0x000000@0.5:boxborderw=20",
-        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-an",
+        "-c:v", "libx264", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", "128k",
+        "-shortest",
         str(out_path),
     ]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=60, check=False)
@@ -284,55 +291,30 @@ def _bridge_card(caption: str, duration: float, out_path: Path) -> None:
 
 
 def _concat_three(parts: list[Path], out: Path) -> None:
-    """Concat N parts (any of them silent — we synthesize a matching
-    silent audio track for bridge). ffmpeg concat filter expects
-    interleaved [v0][a0][v1][a1]... inputs, NOT separate v/a chains.
+    """Use ffmpeg concat *demuxer* (not the concat filter — that path
+    kept tripping 'media type mismatch' on the audio pad regardless of
+    interleaving). All three inputs are pre-normalised to 720x1280
+    h264/yuv420p + aac stereo 44.1k, so we can pipe them through a
+    single demuxer pass and re-encode for a clean container.
     """
-    cmd = ["ffmpeg", "-y", "-loglevel", "error"]
-    # First N inputs are the videos themselves
-    for p in parts:
-        cmd += ["-i", str(p)]
-    # Add a silent stereo audio source for the bridge (input index = N).
-    bridge_idx = 1  # in our 3-part flow [hook, bridge, ai] bridge is index 1
-    bridge_dur = _probe_duration(parts[bridge_idx])
-    cmd += ["-f", "lavfi", "-t", f"{bridge_dur:.3f}",
-            "-i", "anullsrc=channel_layout=stereo:sample_rate=44100"]
-    silent_idx = len(parts)
-
-    filters = []
-    for i, p in enumerate(parts):
-        filters.append(
-            f"[{i}:v]scale=720:1280:force_original_aspect_ratio=decrease,"
-            f"pad=720:1280:(ow-iw)/2:(oh-ih)/2:black,fps=30,settb=AVTB,format=yuv420p[v{i}]"
-        )
-    # Audio normalization: real sources via anull; bridge uses silent source.
-    for i in range(len(parts)):
-        if i == bridge_idx:
-            filters.append(
-                f"[{silent_idx}:a]aformat=sample_rates=44100:channel_layouts=stereo,"
-                f"asetpts=PTS-STARTPTS[a{i}]"
-            )
-        else:
-            filters.append(
-                f"[{i}:a]aformat=sample_rates=44100:channel_layouts=stereo,"
-                f"asetpts=PTS-STARTPTS[a{i}]"
-            )
-    # Concat filter wants interleaved [v0][a0][v1][a1]…[vN][aN]
-    interleaved = "".join(f"[v{i}][a{i}]" for i in range(len(parts)))
-    filters.append(
-        f"{interleaved}concat=n={len(parts)}:v=1:a=1[vout][aout]"
+    list_file = out.parent / "concat_list.txt"
+    list_file.write_text(
+        "\n".join(f"file '{p.resolve()}'" for p in parts) + "\n",
+        encoding="utf-8",
     )
-
-    cmd += [
-        "-filter_complex", ";".join(filters),
-        "-map", "[vout]", "-map", "[aout]",
+    cmd = [
+        "ffmpeg", "-y", "-loglevel", "error",
+        "-f", "concat", "-safe", "0", "-i", str(list_file),
+        # re-encode to guarantee a clean mp4 + uniform timebase across joins
         "-c:v", "libx264", "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-b:a", "128k",
+        "-c:a", "aac", "-b:a", "128k", "-ar", "44100", "-ac", "2",
+        "-vf", "fps=30",
+        "-movflags", "+faststart",
         str(out),
     ]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=300, check=False)
     if r.returncode != 0 or not out.exists():
-        raise StrategyDError(f"concat ffmpeg rc={r.returncode}: {r.stderr[:500]}")
+        raise StrategyDError(f"concat-demuxer rc={r.returncode}: {r.stderr[:500]}")
 
 
 # ─── Main entry ─────────────────────────────────────────

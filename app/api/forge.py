@@ -152,6 +152,31 @@ def forge_start(
         )
 
     if data.strategy == "C":
+        # C / C+ takes 2-10 min — too long for sync HTTP under Railway's
+        # ~5 min proxy timeout. Submit to background thread and return
+        # gv_id immediately; UI polls /api/media/diag/{gv_id} for status.
+        from app.services.frame_inpaint_c_service import StrategyCError, start_strategy_c_async
+        try:
+            gv_id = start_strategy_c_async(
+                db, current_user,
+                source_url=data.source_url,
+                brand=data.brand,
+                product_description=data.product_description,
+                extra_instructions=data.extra_instructions,
+                keyframe_count=data.c_keyframe_count,
+                smooth_transitions=data.c_smooth_transitions,
+            )
+        except StrategyCError as e:
+            raise HTTPException(502, detail=f"strategy C: {e}")
+        return ForgeStartResponse(
+            strategy="C",
+            gv_id=gv_id,
+            next_step=f"poll GET /api/media/diag/{gv_id} until status=ready",
+            cost_estimate_usd=cost,
+        )
+
+    # unreachable — kept for safety
+    if False and data.strategy == "C":
         from app.services.frame_inpaint_c_service import run_strategy_c, StrategyCError
         try:
             result = run_strategy_c(

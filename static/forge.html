@@ -408,13 +408,19 @@ async function startForge() {
     document.getElementById('input-section').classList.add('hidden');
     document.getElementById('strategy-tabs').classList.add('hidden');
 
-    // Strategy B and C return the final media_url synchronously — no polling.
-    if ((activeStrategy === 'B' || activeStrategy === 'C') && data.media_url) {
-      showStrategyBResult(data);  // same renderer works for both
+    // Strategy B returns the final media_url synchronously — no polling.
+    if (activeStrategy === 'B' && data.media_url) {
+      showStrategyBResult(data);
       return;
     }
 
-    // Strategy A (and C, when wired) — async pipeline, poll for status.
+    // Strategy C runs async in a background thread. Poll diag endpoint.
+    if (activeStrategy === 'C' && data.gv_id) {
+      pollStrategyC(data.gv_id);
+      return;
+    }
+
+    // Strategy A — Magic Mode async pipeline, poll for status.
     currentReelId = data.reel_id;
     document.getElementById('progress-section').classList.remove('hidden');
     document.querySelector('[data-stage="uploaded"]').classList.add('done', 'active');
@@ -425,6 +431,62 @@ async function startForge() {
     alert('❌ ' + e.message);
     btn.disabled = false; btn.textContent = '🎬 Сделать ремейк';
   }
+}
+
+async function pollStrategyC(gvId) {
+  // Show a progress card; poll /api/media/diag/{gvId} every 10s until ready/failed.
+  let card = document.getElementById('strat-c-progress');
+  if (!card) {
+    card = document.createElement('div');
+    card.id = 'strat-c-progress';
+    card.className = 'glass rounded-2xl p-6 mb-6';
+    document.querySelector('.max-w-3xl').appendChild(card);
+  }
+  const started = Date.now();
+  card.innerHTML = `
+    <h2 class="text-lg font-semibold mb-3">🎨 C · Frame edit в работе</h2>
+    <div class="text-sm text-gray-300 mb-2">gv #${gvId} · запущено фоном, можно закрыть вкладку и вернуться позже</div>
+    <div id="strat-c-elapsed" class="text-xs text-gray-400 mb-3">прошло: 0 сек</div>
+    <div class="w-full bg-black/30 h-2 rounded overflow-hidden mb-3">
+      <div class="h-2 bg-gradient-to-r from-purple-500 to-pink-500 animate-pulse" style="width:100%"></div>
+    </div>
+    <div class="text-xs text-gray-500">обычно 2-5 мин для C, 5-10 мин для C+</div>
+  `;
+  const tick = setInterval(() => {
+    const sec = Math.round((Date.now() - started) / 1000);
+    const el = document.getElementById('strat-c-elapsed');
+    if (el) el.textContent = `прошло: ${sec} сек`;
+  }, 1000);
+
+  async function check() {
+    try {
+      const r = await authFetch(`/api/media/diag/${gvId}`);
+      const d = await r.json();
+      if (d.status === 'ready' && d.media_url) {
+        clearInterval(tick);
+        card.remove();
+        showStrategyBResult({media_url: d.media_url, cost_actual_usd: 0});
+        return true;
+      }
+      if (d.status === 'failed') {
+        clearInterval(tick);
+        const errMsg = d.error_message || 'unknown error';
+        card.innerHTML = `
+          <h2 class="text-lg font-semibold mb-3 text-red-300">❌ C-стратегия упала</h2>
+          <div class="text-sm text-gray-300 mb-3">${errMsg}</div>
+          <button onclick="location.reload()" class="text-xs text-gray-400 underline">Ещё раз</button>
+        `;
+        return true;
+      }
+    } catch (e) {/* keep polling on transient errors */}
+    return false;
+  }
+
+  // First check sooner; then every 10s.
+  if (await check()) return;
+  const poller = setInterval(async () => {
+    if (await check()) clearInterval(poller);
+  }, 10000);
 }
 
 function showStrategyBResult(d) {

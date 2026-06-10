@@ -603,7 +603,9 @@ def run_strategy_c(
         else:
             _stitch_slideshow(edited_pngs, src_mp4, final_mp4, duration)
 
-        # 5. R2 upload
+        # 5. R2 upload (ensure faststart for browser streaming)
+        from app.core.faststart import ensure_faststart
+        ensure_faststart(final_mp4)
         key = f"users/{user.id}/forge_c/{uuid.uuid4().hex[:12]}.mp4"
         with final_mp4.open("rb") as f:
             r2.upload_bytes(key, f.read(), content_type="video/mp4")

@@ -100,7 +100,9 @@ def face_swap_via_msi(
         # 5) Download from MSI
         download_msi_output(out_fname, out_video)
 
-        # 6) Upload to R2
+        # 6) Upload to R2 (ensure faststart for browser streaming)
+        from app.core.faststart import ensure_faststart
+        ensure_faststart(out_video)
         key = _r2_storage_key(gv.user_id, gv.id, suffix="faceswap")
         with out_video.open("rb") as f:
             r2.upload_bytes(key, f.read(), content_type="video/mp4")

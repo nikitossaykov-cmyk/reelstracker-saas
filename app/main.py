@@ -146,6 +146,85 @@ def migrate_legacy_media_urls():
         db.close()
 
 
+def migrate_legacy_mp4_faststart():
+    """Walk every READY GeneratedVideo with a media_storage_key, download
+    from R2, ensure +faststart, re-upload if needed. Runs once on startup;
+    skips files that are already laid out for streaming.
+
+    Necessary because before we noticed Safari/iOS need moov-before-mdat,
+    every strategy wrote files with moov at the end. With our streaming
+    proxy the browser <video> couldn't read metadata and showed 0:00.
+    """
+    from app.database import SessionLocal
+    from app.models.generation import GeneratedVideo, GenerationStatus
+    from app.core.faststart import ensure_faststart, is_faststart
+    import tempfile
+    from pathlib import Path
+
+    try:
+        from app.core.storage import get_r2
+        r2 = get_r2()
+    except Exception as e:
+        logger.warning(f"migrate_legacy_mp4_faststart: R2 unavailable: {e}")
+        return
+
+    db = SessionLocal()
+    try:
+        rows = (db.query(GeneratedVideo)
+                .filter(GeneratedVideo.status == GenerationStatus.READY,
+                        GeneratedVideo.media_storage_key.isnot(None))
+                .all())
+        rewritten = 0
+        skipped = 0
+        errors = 0
+        workdir = Path(tempfile.mkdtemp(prefix="faststart_"))
+        for gv in rows:
+            key = gv.media_storage_key
+            if not key.endswith(".mp4"):
+                continue
+            local = workdir / f"gv_{gv.id}.mp4"
+            try:
+                r2._client.download_file(r2.bucket, key, str(local))
+            except Exception as e:
+                logger.warning(f"faststart migrate gv #{gv.id} download failed: {e}")
+                errors += 1
+                continue
+            if is_faststart(local):
+                skipped += 1
+                try: local.unlink(missing_ok=True)
+                except OSError: pass
+                continue
+            try:
+                changed = ensure_faststart(local)
+            except Exception as e:
+                logger.warning(f"faststart migrate gv #{gv.id} rewrite failed: {e}")
+                errors += 1
+                try: local.unlink(missing_ok=True)
+                except OSError: pass
+                continue
+            if changed:
+                try:
+                    with local.open("rb") as f:
+                        r2.upload_bytes(key, f.read(), content_type="video/mp4")
+                    rewritten += 1
+                except Exception as e:
+                    logger.warning(f"faststart migrate gv #{gv.id} re-upload failed: {e}")
+                    errors += 1
+            try: local.unlink(missing_ok=True)
+            except OSError: pass
+        try: workdir.rmdir()
+        except OSError: pass
+        if rewritten or errors:
+            logger.info(
+                f"⏩ migrate_legacy_mp4_faststart: rewrote={rewritten}, "
+                f"already_ok={skipped}, errors={errors}"
+            )
+    except Exception as e:
+        logger.warning(f"migrate_legacy_mp4_faststart top-level: {e}")
+    finally:
+        db.close()
+
+
 def reset_stuck_jobs():
     """Сброс зависших задач (RUNNING без завершения)"""
     from app.database import SessionLocal
@@ -300,6 +379,14 @@ async def lifespan(app: FastAPI):
     # Convert any legacy raw R2 media_urls to the stable /api/media proxy
     # form. Idempotent — rows already on proxy form are skipped.
     migrate_legacy_media_urls()
+
+    # Rewrite any READY mp4 in R2 so moov precedes mdat (browser streaming).
+    # Idempotent and runs as a background thread so it never blocks startup.
+    import threading
+    threading.Thread(
+        target=migrate_legacy_mp4_faststart,
+        name="faststart-migrate", daemon=True,
+    ).start()
 
     # Idempotent: encrypt any plaintext OAuth tokens left from pre-Fernet rows.
     # Silently skipped if OAUTH_TOKEN_FERNET_KEY not set (first deploy).

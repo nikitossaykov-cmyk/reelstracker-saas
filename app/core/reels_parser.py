@@ -14,8 +14,6 @@ import zipfile
 from datetime import datetime
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 
 logger = logging.getLogger(__name__)
@@ -331,7 +329,7 @@ class ReelsParser:
             # Метод 0: GraphQL API через web endpoint
             try:
                 # Пробуем получить данные через graphql query
-                graphql_url = f"https://www.instagram.com/graphql/query/"
+                graphql_url = "https://www.instagram.com/graphql/query/"
                 variables = {"shortcode": shortcode}
                 params = {
                     "query_hash": "b3055c01b4b222b8a47dc12b090e4e64",  # media query hash

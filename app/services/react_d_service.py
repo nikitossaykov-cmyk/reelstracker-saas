@@ -274,7 +274,7 @@ def _bridge_card(caption: str, duration: float, out_path: Path) -> None:
         "ffmpeg", "-y", "-loglevel", "error",
         # video: solid color with drawtext
         "-f", "lavfi", "-t", f"{duration:.3f}",
-        "-i", f"color=c=0x0a0a0a:s=720x1280:r=30",
+        "-i", "color=c=0x0a0a0a:s=720x1280:r=30",
         # audio: silent stereo at 44.1kHz, exact same duration
         "-f", "lavfi", "-t", f"{duration:.3f}",
         "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",

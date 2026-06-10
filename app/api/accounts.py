@@ -3,7 +3,6 @@ API для Instagram-аккаунтов: добавление, список, syn
 """
 
 from typing import List
-from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 

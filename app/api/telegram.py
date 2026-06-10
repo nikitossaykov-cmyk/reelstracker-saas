@@ -12,7 +12,6 @@ from app.schemas.telegram import TelegramSettings, TelegramSettingsUpdate
 from app.services.telegram_service import (
     get_user_telegram,
     update_telegram_settings,
-    TelegramService,
 )
 
 router = APIRouter()

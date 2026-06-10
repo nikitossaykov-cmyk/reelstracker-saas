@@ -12,7 +12,6 @@ from sqlalchemy import or_
 
 from app.database import SessionLocal
 from app.models.reel import Reel, ReelHistory
-from app.models.parsing import ParseJob, JobStatus
 from app.services.parsing_service import get_next_pending_job, complete_job, fail_job
 from app.services.telegram_service import get_user_telegram
 from app.core.reels_parser import ReelsParser

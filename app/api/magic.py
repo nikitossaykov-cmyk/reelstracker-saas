@@ -10,7 +10,7 @@ from pathlib import Path
 import tempfile
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Form, Body
+from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Form
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 

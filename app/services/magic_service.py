@@ -12,7 +12,6 @@ GeneratedVideo.status) — UI запрашивает /api/magic/{magic_job_id}/s
 
 from __future__ import annotations
 
-import json
 import logging
 import tempfile
 import uuid
@@ -26,14 +25,15 @@ from app.models.user import User
 from app.models.reel import Reel
 from app.models.parsing import ParseJob, JobStatus, JobType
 from app.models.generation import GeneratedVideo, GenerationStatus, VideoProvider
-from app.services.tariff_service import get_priority
-from app.core.composer import RemakeParams
-from app.core.media_service_helpers import upload_to_r2
 
 logger = logging.getLogger(__name__)
 
 
 def _upload_local_to_r2(local: Path, user_id: int) -> tuple[str, int]:
+    # yt-dlp generally writes faststart, but defensive: idempotent rewrite
+    # so the source MP4 is always streamable through /api/media.
+    from app.core.faststart import ensure_faststart
+    ensure_faststart(local)
     from app.core.storage import get_r2
     r2 = get_r2()
     key = f"users/{user_id}/magic_source/{uuid.uuid4().hex[:12]}.mp4"
@@ -144,7 +144,7 @@ def start_magic_from_url(
         try:
             init_image_url = _extract_first_frame_and_upload(local_path, user.id)
             if init_image_url:
-                logger.info(f"🪄 Magic: extracted first frame as init_image")
+                logger.info("🪄 Magic: extracted first frame as init_image")
         except Exception as e:
             logger.warning(f"first-frame extraction failed (will fallback to text2video): {e}")
     finally:

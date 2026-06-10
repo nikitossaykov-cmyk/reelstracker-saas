@@ -11,7 +11,8 @@ psycopg2-binary==2.9.9
 alembic==1.13.1
 
 # Auth
-python-jose[cryptography]==3.4.0
+python-jose[cryptography]==3.5.0
+pyasn1==0.6.3  # transitive of python-jose; pin to close CVE-2026-30922
 passlib[bcrypt]==1.7.4
 bcrypt==4.1.2
 

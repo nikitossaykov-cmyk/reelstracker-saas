@@ -20,7 +20,6 @@ Refresh long-lived = refresh_token (offline access).
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from app.core.publishers.base import (
     PublisherBase, PublishResult, PublishError, OAuthExpired,

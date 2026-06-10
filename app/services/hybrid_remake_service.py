@@ -356,7 +356,9 @@ def execute_hybrid_remake(
         )
         logger.info(f"💰 hybrid gv #{gv.id} cost ≈ {breakdown['total_usd']}")
 
-        # Upload final to R2
+        # Upload final to R2 (ensure faststart for browser streaming)
+        from app.core.faststart import ensure_faststart
+        ensure_faststart(final)
         key = f"users/{user.id}/hybrid/{gv.id}_{uuid.uuid4().hex[:8]}.mp4"
         with final.open("rb") as f:
             r2.upload_bytes(key, f.read(), content_type="video/mp4")

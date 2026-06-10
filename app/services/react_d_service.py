@@ -418,7 +418,9 @@ def run_strategy_d(
         # 9. Concat hook + bridge + ai
         _concat_three([hook_mp4, bridge_mp4, ai_mp4], final_mp4)
 
-        # 10. R2 upload
+        # 10. R2 upload (ensure faststart for browser streaming)
+        from app.core.faststart import ensure_faststart
+        ensure_faststart(final_mp4)
         key = f"users/{user.id}/forge_d/{uuid.uuid4().hex[:12]}.mp4"
         with final_mp4.open("rb") as f:
             r2.upload_bytes(key, f.read(), content_type="video/mp4")

@@ -74,6 +74,10 @@
       <div>🎨 C · Frame edit</div>
       <div class="text-[10px] text-gray-500 mt-0.5">inpaint ключевых кадров · ~$1.50 · 5-10 мин</div>
     </button>
+    <button data-strategy="D" class="strat-tab flex-1 py-3 rounded-t-lg text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-white">
+      <div>🎭 D · React</div>
+      <div class="text-[10px] text-gray-500 mt-0.5">хук + AI-блогер · ~$0.10 · 1-2 мин</div>
+    </button>
   </div>
 
   <!-- INPUT -->
@@ -168,6 +172,31 @@
       <div class="mt-3 p-2 bg-green-900/20 border border-green-500/30 rounded text-xs text-green-200">
         ✅ Default mode: gpt-image-1 inpaint + ffmpeg xfade slideshow. ~$0.21 за N=5, 2-3 мин.
         Включи C+ выше если хочешь живое движение между кадрами — будет дороже и медленнее, но качество значительно выше.
+      </div>
+    </div>
+
+    <!-- TAB D: React (hook + AI-blogger) -->
+    <div id="tab-D" class="strat-pane mb-5 hidden">
+      <div class="mb-3 p-3 bg-purple-900/15 border border-purple-500/20 rounded text-xs text-gray-300">
+        💡 <strong>React-формат.</strong> Берём первые N сек чужого вирусного ролика → bridge-caption «А ВОТ Я ДУМАЮ» → 15 сек AI-блогера: gpt-image-1 рисует «тебя» с продуктом, GPT-4o-mini пишет осмысленный комментарий с упоминанием бренда, OpenAI tts-1 озвучивает. Дешёвый и быстрый формат для A/B-теста хуков.
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <input name="brand" placeholder="🏷 Бренд (MIMIC)" class="bg-black/40 border border-white/10 px-3 py-2 rounded text-sm" />
+        <input name="d_hook_seconds" type="number" value="5" min="2" max="10" placeholder="Сек хука" title="Сколько секунд оригинала использовать как hook (2-10)" class="bg-black/40 border border-white/10 px-3 py-2 rounded text-sm" />
+        <input name="product_description" placeholder="📦 Продукт (glossy black perfume bottle)" class="bg-black/40 border border-white/10 px-3 py-2 rounded text-sm col-span-2" />
+        <input name="face_description" placeholder="👤 AI-блогер (young woman ~25, blonde)" class="bg-black/40 border border-white/10 px-3 py-2 rounded text-sm col-span-2" />
+        <select name="d_tts_voice" class="bg-black/40 border border-white/10 px-3 py-2 rounded text-sm">
+          <option value="nova">🎙 nova (женский, тёплый)</option>
+          <option value="shimmer">🎙 shimmer (женский, мягкий)</option>
+          <option value="alloy">🎙 alloy (нейтральный)</option>
+          <option value="echo">🎙 echo (мужской, приглушённый)</option>
+          <option value="onyx">🎙 onyx (мужской, глубокий)</option>
+          <option value="fable">🎙 fable (мужской, рассказывающий)</option>
+        </select>
+        <input name="extra_instructions" placeholder="✍️ Доп. инструкция для AI-текста (необязательно)" class="bg-black/40 border border-white/10 px-3 py-2 rounded text-sm" />
+      </div>
+      <div class="mt-3 p-2 bg-green-900/20 border border-green-500/30 rounded text-xs text-green-200">
+        ✅ ~$0.10 за ремейк, ~1-2 мин в фоне. Требует openai_api_key. Источник — TikTok/YouTube/IG (для IG только если cookies прокатят).
       </div>
     </div>
 
@@ -301,6 +330,7 @@ const STRATEGY_META = {
   A: { label: '🎬 A · Magic', est: '~3-7 мин · ~$0.20', cost: 0.20 },
   B: { label: '🔀 B · Уникализатор', est: '~30 сек · ~$0.01', cost: 0.01 },
   C: { label: '🎨 C · Frame edit', est: '~5-10 мин · ~$1.50', cost: 1.50 },
+  D: { label: '🎭 D · React', est: '~1-2 мин · ~$0.10', cost: 0.10 },
 };
 
 document.querySelectorAll('.strat-tab').forEach(btn => {
@@ -367,6 +397,16 @@ function getParams() {
       c_smooth_transitions: c('c_smooth_transitions'),
     };
   }
+  if (activeStrategy === 'D') {
+    return {
+      brand: v('brand'),
+      product_description: v('product_description'),
+      face_description: v('face_description'),
+      extra_instructions: v('extra_instructions'),
+      d_hook_seconds: parseFloat(v('d_hook_seconds') || '5'),
+      d_tts_voice: v('d_tts_voice') || 'nova',
+    };
+  }
   return {};
 }
 
@@ -415,8 +455,8 @@ async function startForge() {
     }
 
     // Strategy C runs async in a background thread. Poll diag endpoint.
-    if (activeStrategy === 'C' && data.gv_id) {
-      pollStrategyC(data.gv_id);
+    if ((activeStrategy === 'C' || activeStrategy === 'D') && data.gv_id) {
+      pollStrategyC(data.gv_id);  // same async/poll/render flow for both
       return;
     }
 

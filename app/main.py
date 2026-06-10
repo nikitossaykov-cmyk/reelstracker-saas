@@ -407,6 +407,16 @@ async def forge_page_redirect():
     return FileResponse("static/forge.html")
 
 
+@app.get("/settings")
+async def settings_page_redirect():
+    return FileResponse("static/settings.html")
+
+
+@app.get("/settings.html")
+async def settings_page():
+    return FileResponse("static/settings.html")
+
+
 @app.get("/forge.html")
 async def forge_page():
     return FileResponse("static/forge.html")

@@ -208,7 +208,7 @@ def _head_response(key: str, db: Session):
             "Content-Length": str(size),
             "Content-Type": head.get("ContentType") or "video/mp4",
             "Accept-Ranges": "bytes",
-            "Cache-Control": "public, max-age=3600",
+            "Cache-Control": "public, max-age=60",
         },
     )
 
@@ -256,7 +256,7 @@ def media_stream(key: str, request: Request, db: Session = Depends(get_db)):
             "Content-Length": str(length),
             "Content-Type": content_type,
             "Accept-Ranges": "bytes",
-            "Cache-Control": "public, max-age=3600",
+            "Cache-Control": "public, max-age=60",
         }
         return StreamingResponse(
             obj["Body"].iter_chunks(chunk_size=64 * 1024),
@@ -272,7 +272,7 @@ def media_stream(key: str, request: Request, db: Session = Depends(get_db)):
         "Content-Length": str(size),
         "Content-Type": content_type,
         "Accept-Ranges": "bytes",
-        "Cache-Control": "public, max-age=3600",
+        "Cache-Control": "public, max-age=60",
     }
     return StreamingResponse(
         obj["Body"].iter_chunks(chunk_size=64 * 1024),

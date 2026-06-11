@@ -15,7 +15,9 @@ yt-dlp обёртка для скачивания MP4 из IG/TikTok/YouTube/Ree
 from __future__ import annotations
 
 import logging
+import os
 import tempfile
+import time
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -25,6 +27,106 @@ logger = logging.getLogger(__name__)
 
 class DownloadError(Exception):
     pass
+
+
+def _download_via_apify(url: str, out_dir: Path) -> tuple[Path, dict]:
+    """Apify-actor download fallback for when yt-dlp gets IP-banned/login-walled.
+    Needs APIFY_API_TOKEN env. Returns (file_path, meta) same as yt-dlp path.
+    """
+    import requests
+
+    token = os.environ.get("APIFY_API_TOKEN")
+    if not token:
+        raise DownloadError("APIFY_API_TOKEN not set — apify fallback unavailable")
+
+    platform = detect_platform(url)
+    if platform == "tiktok":
+        actor = "clockworks~tiktok-scraper"
+        body = {"postURLs": [url], "shouldDownloadVideos": True, "resultsPerPage": 1}
+    elif platform == "instagram":
+        actor = "apify~instagram-scraper"
+        body = {"directUrls": [url], "resultsType": "details", "resultsLimit": 1}
+    else:
+        raise DownloadError(f"apify fallback не поддерживает платформу: {platform}")
+
+    logger.info(f"apify fallback: {actor} for {platform}")
+    r = requests.post(
+        f"https://api.apify.com/v2/acts/{actor}/runs?token={token}",
+        json=body, timeout=60,
+    )
+    if r.status_code >= 400:
+        raise DownloadError(f"apify start HTTP {r.status_code}: {r.text[:200]}")
+    run = r.json().get("data") or {}
+    run_id = run.get("id")
+    if not run_id:
+        raise DownloadError("apify: no run id in response")
+
+    # poll up to 180s
+    status = run.get("status")
+    for _ in range(60):
+        time.sleep(3)
+        rr = requests.get(
+            f"https://api.apify.com/v2/actor-runs/{run_id}?token={token}",
+            timeout=30,
+        )
+        data = rr.json().get("data") or {}
+        status = data.get("status")
+        if status in ("SUCCEEDED", "FAILED", "ABORTED", "TIMED-OUT"):
+            break
+    if status != "SUCCEEDED":
+        raise DownloadError(f"apify run finished as {status}")
+
+    dataset_id = data.get("defaultDatasetId")
+    if not dataset_id:
+        raise DownloadError("apify: no defaultDatasetId")
+    items_url = (f"https://api.apify.com/v2/datasets/{dataset_id}/items"
+                 f"?token={token}&clean=true&format=json")
+    items = requests.get(items_url, timeout=60).json()
+    if not items:
+        raise DownloadError("apify dataset empty — actor returned no items")
+    item = items[0]
+
+    # Different actors expose the MP4 URL under different keys.
+    video_url = (
+        item.get("videoUrl")
+        or item.get("videoUrlNoWaterMark")
+        or (item.get("videoMeta") or {}).get("downloadAddr")
+        or item.get("mediaUrl")
+        or (item.get("videoVersions") or [{}])[0].get("url")
+    )
+    if not video_url:
+        raise DownloadError(
+            f"apify: no video url in item; keys={list(item.keys())[:15]}"
+        )
+
+    out = out_dir / "video.mp4"
+    with requests.get(video_url, stream=True, timeout=180) as resp:
+        resp.raise_for_status()
+        with out.open("wb") as f:
+            for chunk in resp.iter_content(chunk_size=1024 * 1024):
+                if chunk:
+                    f.write(chunk)
+
+    size = out.stat().st_size
+    if size < 10_000:
+        raise DownloadError(f"apify-downloaded file too small: {size} bytes")
+
+    meta = {
+        "title": (item.get("text") or item.get("caption") or "")[:255],
+        "uploader": (item.get("authorMeta") or {}).get("name") or item.get("ownerUsername"),
+        "uploader_id": item.get("authorId") or item.get("ownerId"),
+        "duration": (item.get("videoMeta") or {}).get("duration") or item.get("videoDuration"),
+        "view_count": item.get("playCount") or item.get("videoPlayCount"),
+        "like_count": item.get("diggCount") or item.get("likesCount"),
+        "comment_count": item.get("commentCount"),
+        "webpage_url": url,
+        "thumbnail": (item.get("videoMeta") or {}).get("coverUrl") or item.get("displayUrl"),
+        "platform": platform,
+        "description": (item.get("text") or "")[:2000],
+        "downloader": "apify",
+    }
+    logger.info(f"apify: downloaded {size//1024} KB from {platform}")
+    return out, meta
 
 
 def detect_platform(url: str) -> str:
@@ -72,8 +174,25 @@ def download_video(url: str, out_dir: Optional[Path] = None) -> tuple[Path, dict
     except Exception as e:
         err_str = str(e)
         low = err_str.lower()
-        # IG with no cookies regularly returns "rate-limit reached or login
-        # required" — surface a friendlier message and a workaround.
+        # When yt-dlp gets blocked by IP / login-walled, try Apify scraper
+        # fallback (requires APIFY_API_TOKEN in env). Covers both IG 401
+        # and the TT "Your IP address is blocked" pattern that hit Nick.
+        ip_blocked = (
+            "rate-limit" in low or "login required" in low or "cookies" in low
+            or "ip address is blocked" in low or "ip blocked" in low
+            or "not available" in low
+        )
+        if ip_blocked and os.environ.get("APIFY_API_TOKEN"):
+            try:
+                logger.warning(
+                    f"yt-dlp failed ({type(e).__name__}: {err_str[:100]}); "
+                    f"trying Apify fallback for {url}"
+                )
+                return _download_via_apify(url, workdir)
+            except DownloadError as e2:
+                raise DownloadError(
+                    f"yt-dlp blocked, Apify fallback also failed: {e2}"
+                )
         if "instagram" in url.lower() and (
             "rate-limit" in low or "login required" in low or "cookies" in low
         ):

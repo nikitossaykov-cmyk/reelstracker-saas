@@ -96,6 +96,12 @@ def _download_via_apify(url: str, out_dir: Path,
         or (item.get("videoVersions") or [{}])[0].get("url")
     )
     if not video_url:
+        actor_err = item.get("error") or item.get("errorMessage") or ""
+        actor_code = item.get("errorCode") or ""
+        if actor_err or actor_code:
+            raise DownloadError(
+                f"apify actor reported error: {actor_code} {actor_err[:200]}"
+            )
         raise DownloadError(
             f"apify: no video url in item; keys={list(item.keys())[:15]}"
         )

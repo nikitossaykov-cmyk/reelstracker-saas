@@ -29,15 +29,16 @@ class DownloadError(Exception):
     pass
 
 
-def _download_via_apify(url: str, out_dir: Path) -> tuple[Path, dict]:
+def _download_via_apify(url: str, out_dir: Path,
+                        apify_token: Optional[str] = None) -> tuple[Path, dict]:
     """Apify-actor download fallback for when yt-dlp gets IP-banned/login-walled.
-    Needs APIFY_API_TOKEN env. Returns (file_path, meta) same as yt-dlp path.
+    `apify_token` falls back to env var. Returns (file_path, meta) same as yt-dlp path.
     """
     import requests
 
-    token = os.environ.get("APIFY_API_TOKEN")
+    token = apify_token or os.environ.get("APIFY_API_TOKEN")
     if not token:
-        raise DownloadError("APIFY_API_TOKEN not set — apify fallback unavailable")
+        raise DownloadError("no apify token (neither argument nor APIFY_API_TOKEN env)")
 
     platform = detect_platform(url)
     if platform == "tiktok":
@@ -142,11 +143,17 @@ def detect_platform(url: str) -> str:
     return "unknown"
 
 
-def download_video(url: str, out_dir: Optional[Path] = None) -> tuple[Path, dict]:
+def download_video(url: str, out_dir: Optional[Path] = None,
+                   apify_token: Optional[str] = None) -> tuple[Path, dict]:
     """Скачать MP4 по URL. Возвращает (path, metadata).
 
     metadata содержит как минимум: title, uploader, duration, view_count,
     like_count (если платформа отдала), webpage_url, thumbnail.
+
+    `apify_token` — пользовательский apify api-key. Если задан и yt-dlp
+    падает с IP-block / login-required, автоматический fallback на
+    соответствующий Apify scraper actor. Без него — fallback на env var
+    APIFY_API_TOKEN. Без обоих — никакого fallback.
     """
     try:
         import yt_dlp
@@ -182,7 +189,8 @@ def download_video(url: str, out_dir: Optional[Path] = None) -> tuple[Path, dict
             or "ip address is blocked" in low or "ip blocked" in low
             or "not available" in low
         )
-        token_present = bool(os.environ.get("APIFY_API_TOKEN"))
+        effective_token = apify_token or os.environ.get("APIFY_API_TOKEN")
+        token_present = bool(effective_token)
         logger.warning(
             f"yt-dlp failed: ip_blocked={ip_blocked} apify_token_present={token_present} "
             f"err={err_str[:200]}"
@@ -190,15 +198,16 @@ def download_video(url: str, out_dir: Optional[Path] = None) -> tuple[Path, dict
         if ip_blocked and token_present:
             try:
                 logger.warning(f"trying Apify fallback for {url}")
-                return _download_via_apify(url, workdir)
+                return _download_via_apify(url, workdir, apify_token=effective_token)
             except DownloadError as e2:
                 raise DownloadError(
                     f"yt-dlp blocked + Apify fallback failed: {e2}"
                 )
         if ip_blocked and not token_present:
             raise DownloadError(
-                f"yt-dlp blocked AND APIFY_API_TOKEN not set in Railway env — "
-                f"add it to enable Apify scraper fallback. yt-dlp: {err_str[:200]}"
+                "yt-dlp blocked AND no Apify token available. Add an "
+                "apify_token to your profile via /api/settings/apify "
+                f"or set APIFY_API_TOKEN env. yt-dlp: {err_str[:200]}"
             )
         if "instagram" in url.lower() and (
             "rate-limit" in low or "login required" in low or "cookies" in low

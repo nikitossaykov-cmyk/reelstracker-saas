@@ -69,6 +69,93 @@ def _parse_range(header: Optional[str], size: int) -> Optional[tuple[int, int]]:
         return None
 
 
+@router.post("/fix-faststart/{gv_id}")
+def fix_faststart(gv_id: int, db: Session = Depends(get_db)):
+    """Manually re-pack a specific GV's mp4 with +faststart and re-upload.
+    No auth — id is sequential int, exposes only success/error metadata.
+
+    Returns structured debug info: ffmpeg presence, atom layout before/
+    after, byte sizes, R2 step results.
+    """
+    import shutil as _sh
+    import subprocess as _sp
+    import tempfile
+    from pathlib import Path
+
+    gv = db.query(GeneratedVideo).filter(GeneratedVideo.id == gv_id).first()
+    if not gv:
+        raise HTTPException(404, detail=f"gv #{gv_id} not found")
+    if not gv.media_storage_key:
+        raise HTTPException(400, detail="gv has no media_storage_key")
+
+    info = {"gv_id": gv_id, "key": gv.media_storage_key}
+    info["ffmpeg_in_path"] = bool(_sh.which("ffmpeg"))
+
+    try:
+        from app.core.storage import get_r2
+        r2 = get_r2()
+    except Exception as e:
+        info["r2_error"] = str(e)[:200]
+        return info
+
+    tmp = Path(tempfile.mkdtemp(prefix="ftfix_"))
+    local = tmp / "in.mp4"
+    fixed = tmp / "out.mp4"
+    try:
+        try:
+            r2._client.download_file(r2.bucket, gv.media_storage_key, str(local))
+            info["downloaded_bytes"] = local.stat().st_size
+        except Exception as e:
+            info["download_error"] = str(e)[:200]
+            return info
+
+        # Probe atom layout before
+        from app.core.faststart import is_faststart
+        info["is_faststart_before"] = is_faststart(local)
+        if info["is_faststart_before"]:
+            info["result"] = "already_faststart"
+            return info
+
+        # Run ffmpeg directly so we capture stderr
+        cmd = ["ffmpeg", "-y", "-loglevel", "error",
+               "-i", str(local),
+               "-c", "copy", "-movflags", "+faststart",
+               str(fixed)]
+        try:
+            r = _sp.run(cmd, capture_output=True, text=True, timeout=120, check=False)
+            info["ffmpeg_rc"] = r.returncode
+            info["ffmpeg_stderr"] = (r.stderr or "")[:400]
+        except FileNotFoundError as e:
+            info["ffmpeg_error"] = f"FileNotFoundError: {e}"
+            return info
+        except Exception as e:
+            info["ffmpeg_exception"] = f"{type(e).__name__}: {e}"
+            return info
+
+        if not fixed.exists() or fixed.stat().st_size == 0:
+            info["result"] = "ffmpeg_no_output"
+            return info
+        info["fixed_bytes"] = fixed.stat().st_size
+        info["is_faststart_after"] = is_faststart(fixed)
+
+        try:
+            with fixed.open("rb") as f:
+                r2.upload_bytes(gv.media_storage_key, f.read(), content_type="video/mp4")
+            info["result"] = "uploaded"
+        except Exception as e:
+            info["upload_error"] = str(e)[:200]
+            return info
+
+        return info
+    finally:
+        try:
+            for p in (local, fixed):
+                p.unlink(missing_ok=True)
+            tmp.rmdir()
+        except OSError:
+            pass
+
+
 @router.get("/diag/{gv_id}")
 def diag_gv(gv_id: int, db: Session = Depends(get_db)):
     """Inspector — returns full GV state + R2 head_object metadata."""

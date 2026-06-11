@@ -182,17 +182,24 @@ def download_video(url: str, out_dir: Optional[Path] = None) -> tuple[Path, dict
             or "ip address is blocked" in low or "ip blocked" in low
             or "not available" in low
         )
-        if ip_blocked and os.environ.get("APIFY_API_TOKEN"):
+        token_present = bool(os.environ.get("APIFY_API_TOKEN"))
+        logger.warning(
+            f"yt-dlp failed: ip_blocked={ip_blocked} apify_token_present={token_present} "
+            f"err={err_str[:200]}"
+        )
+        if ip_blocked and token_present:
             try:
-                logger.warning(
-                    f"yt-dlp failed ({type(e).__name__}: {err_str[:100]}); "
-                    f"trying Apify fallback for {url}"
-                )
+                logger.warning(f"trying Apify fallback for {url}")
                 return _download_via_apify(url, workdir)
             except DownloadError as e2:
                 raise DownloadError(
-                    f"yt-dlp blocked, Apify fallback also failed: {e2}"
+                    f"yt-dlp blocked + Apify fallback failed: {e2}"
                 )
+        if ip_blocked and not token_present:
+            raise DownloadError(
+                f"yt-dlp blocked AND APIFY_API_TOKEN not set in Railway env — "
+                f"add it to enable Apify scraper fallback. yt-dlp: {err_str[:200]}"
+            )
         if "instagram" in url.lower() and (
             "rate-limit" in low or "login required" in low or "cookies" in low
         ):

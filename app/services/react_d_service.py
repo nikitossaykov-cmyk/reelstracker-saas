@@ -64,13 +64,22 @@ def _probe_duration(path: Path) -> float:
 
 
 def _cut(src: Path, start: float, length: float, dst: Path) -> None:
+    """Cut a window of the source mp4 and FULLY re-encode it to baseline
+    h264 + AAC LC 44.1k stereo. Source streams from yt-dlp sometimes
+    come with HE-AAC v2 or other quirks that wreck the concat demuxer
+    downstream; forcing aac_low + explicit sample rate/channels here
+    avoids 'decode_pce: Input buffer exhausted' and friends.
+    """
     cmd = [
         "ffmpeg", "-y", "-loglevel", "error",
         "-ss", f"{start:.3f}", "-i", str(src), "-t", f"{length:.3f}",
         "-vf", "scale=720:1280:force_original_aspect_ratio=decrease,"
                "pad=720:1280:(ow-iw)/2:(oh-ih)/2:black,fps=30,settb=AVTB,format=yuv420p",
+        "-af", "aresample=44100:async=1:first_pts=0",
         "-c:v", "libx264", "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-b:a", "128k",
+        "-c:a", "aac", "-profile:a", "aac_low", "-b:a", "128k",
+        "-ar", "44100", "-ac", "2",
+        "-fflags", "+genpts", "-avoid_negative_ts", "make_zero",
         str(dst),
     ]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=120, check=False)
@@ -258,7 +267,8 @@ def _build_ai_segment(
         "-map", "[final]",
         "-map", f"{n}:a:0",
         "-c:v", "libx264", "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-b:a", "128k", "-shortest",
+        "-c:a", "aac", "-profile:a", "aac_low", "-b:a", "128k",
+        "-ar", "44100", "-ac", "2", "-shortest",
         str(out_path),
     ]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=300, check=False)
@@ -281,7 +291,8 @@ def _bridge_card(caption: str, duration: float, out_path: Path) -> None:
         "-vf", f"drawtext=text='{safe}':fontcolor=white:fontsize=72:"
                f"x=(w-text_w)/2:y=(h-text_h)/2:box=1:boxcolor=0x000000@0.5:boxborderw=20",
         "-c:v", "libx264", "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-b:a", "128k",
+        "-c:a", "aac", "-profile:a", "aac_low", "-b:a", "128k",
+        "-ar", "44100", "-ac", "2",
         "-shortest",
         str(out_path),
     ]
@@ -304,10 +315,15 @@ def _concat_three(parts: list[Path], out: Path) -> None:
     )
     cmd = [
         "ffmpeg", "-y", "-loglevel", "error",
+        # tolerate quirky AAC frames that yt-dlp sometimes carries from
+        # whatever the source platform encoded with
+        "-err_detect", "ignore_err",
         "-f", "concat", "-safe", "0", "-i", str(list_file),
         # re-encode to guarantee a clean mp4 + uniform timebase across joins
+        "-af", "aresample=44100:async=1:first_pts=0",
         "-c:v", "libx264", "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-b:a", "128k", "-ar", "44100", "-ac", "2",
+        "-c:a", "aac", "-profile:a", "aac_low", "-b:a", "128k",
+        "-ar", "44100", "-ac", "2",
         "-vf", "fps=30",
         "-movflags", "+faststart",
         str(out),

@@ -133,7 +133,9 @@ def start_magic_from_url(
 
     # 1. yt-dlp
     try:
-        local_path, meta = download_video(source_url)
+        local_path, meta = download_video(
+            source_url, apify_token=getattr(user, 'apify_token', None),
+        )
     except DownloadError as e:
         raise ValueError(f"download failed: {e}")
 

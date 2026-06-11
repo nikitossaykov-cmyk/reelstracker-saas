@@ -416,7 +416,8 @@ def run_strategy_d(
         # 1-2. Download + cut hook
         logger.info(f"strategy D: download {source_url}")
         try:
-            downloaded, meta = download_video(source_url, out_dir=workdir)
+            downloaded, meta = download_video(source_url, out_dir=workdir,
+                                              apify_token=getattr(user, 'apify_token', None))
         except DownloadError as e:
             raise StrategyDError(f"download failed: {e}")
         if downloaded != src_mp4:

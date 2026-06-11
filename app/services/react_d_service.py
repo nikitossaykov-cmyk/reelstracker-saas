@@ -164,24 +164,69 @@ def _synthesize_tts(text: str, *, openai_api_key: str, out_path: Path,
 
 # ─── gpt-image-1 keyframes (reuse pattern from C) ───────
 
+_SAFE_FALLBACK_PROMPT = (
+    "Photorealistic vertical 9:16 portrait, generic young adult content "
+    "creator speaking to camera in a modern bright apartment, soft "
+    "natural light, casual fashion, holding a perfume-style glass "
+    "bottle, no identifying features, no brand names visible."
+)
+
+
 def _gen_keyframe(prompt: str, openai_api_key: str, out_path: Path,
                   timeout: int = 120) -> None:
+    """Generate a keyframe via gpt-image-1. If the first prompt trips
+    OpenAI safety, retry once with a fully generic prompt so the run can
+    still complete. If even the safe fallback is rejected we surface a
+    human-readable message about which knobs in the form likely caused
+    the trigger.
+    """
     try:
         from openai import OpenAI
+        from openai import BadRequestError  # 400 → safety in most cases
     except ImportError as e:
         raise StrategyDError(f"openai SDK: {e}")
     client = OpenAI(api_key=openai_api_key, timeout=timeout)
-    try:
+
+    def _try(p: str) -> bool:
         resp = client.images.generate(
             model="gpt-image-1",
-            prompt=prompt[:1000],
+            prompt=p[:1000],
             size="1024x1536",
             n=1,
         )
         b64 = resp.data[0].b64_json
         if not b64:
-            raise StrategyDError("gpt-image-1 empty b64_json")
+            return False
         out_path.write_bytes(base64.b64decode(b64))
+        return True
+
+    try:
+        if _try(prompt):
+            return
+        raise StrategyDError("gpt-image-1 returned empty b64_json")
+    except BadRequestError as e:
+        msg = str(e).lower()
+        if "safety" in msg or "moderat" in msg or "policy" in msg:
+            logger.warning(
+                "gpt-image-1 safety rejected primary prompt; retrying with "
+                "generic fallback"
+            )
+            try:
+                if _try(_SAFE_FALLBACK_PROMPT):
+                    return
+            except BadRequestError as e2:
+                raise StrategyDError(
+                    "🛑 OpenAI safety system отбил кадр даже на безопасном "
+                    "fallback. Скорее всего проблема в `📦 Продукт` или "
+                    "`✍️ Доп. инструкция` — попробуй без имён реальных "
+                    "людей, без явных копий чужих брендов, без откровенных "
+                    "формулировок. Detail: " + str(e2)[:200]
+                )
+            raise StrategyDError(
+                "🛑 OpenAI safety system отбил кадр (даже fallback). "
+                "Перепиши `👤 AI-блогер` и `📦 Продукт` обобщённее."
+            )
+        raise StrategyDError(f"gpt-image-1 400: {str(e)[:200]}")
     except Exception as e:
         raise StrategyDError(f"gpt-image-1: {type(e).__name__}: {str(e)[:200]}")
 
@@ -405,16 +450,30 @@ def run_strategy_d(
         )
 
         # 6. 2 gpt-image-1 keyframes
+        # Soft-prompt to dodge the most common gpt-image-1 safety triggers:
+        # no "real person" framing, no celebrity-likeness hooks, no
+        # alcohol/intoxicant adjacency for the perfume bottle.
         kf_prompt_parts = [
-            "Photorealistic vertical 9:16 portrait of a young person speaking to camera, "
-            "modern apartment background, soft natural light, casual styling,",
+            "Photorealistic vertical 9:16 portrait of a fictional generic "
+            "content creator (no identifying features, no celebrity "
+            "likeness) speaking to camera, modern apartment background, "
+            "soft natural light, casual styling,",
         ]
         if face_description:
-            kf_prompt_parts.append(f"face: {face_description},")
+            kf_prompt_parts.append(
+                f"general look (fictional persona): {face_description},"
+            )
         if brand:
-            kf_prompt_parts.append(f"holding product branded {brand},")
+            kf_prompt_parts.append(
+                f"holding a generic perfume bottle inspired by '{brand}',"
+            )
         if product_description:
-            kf_prompt_parts.append(f"product: {product_description}")
+            kf_prompt_parts.append(
+                f"product description: {product_description},"
+            )
+        kf_prompt_parts.append(
+            "no real-person likeness, no logos of existing brands."
+        )
         kf_prompt = " ".join(kf_prompt_parts)
 
         kf1 = workdir / "kf1.png"

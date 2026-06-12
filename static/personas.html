@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Persona Library — Reelstracker</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { background: radial-gradient(circle at 30% 20%, #1a0a2e 0%, #0a0a0a 60%); color: #e5e5e5; font-family: -apple-system, BlinkMacSystemFont, sans-serif; min-height: 100vh; }
+  .glass { background: rgba(255,255,255,0.04); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.08); }
+  .btn-magic { background: linear-gradient(135deg, #7c3aed 0%, #ec4899 50%, #f59e0b 100%); box-shadow: 0 4px 30px rgba(168, 85, 247, 0.4); }
+  .btn-magic:hover { transform: translateY(-1px); box-shadow: 0 6px 40px rgba(168, 85, 247, 0.6); }
+  .btn-magic:disabled { opacity: 0.5; cursor: not-allowed; }
+  .modal { background: rgba(0,0,0,0.85); }
+</style>
+</head>
+<body>
+<header class="max-w-4xl mx-auto p-4 flex justify-between items-center">
+  <h1 class="text-xl font-semibold flex items-center gap-2">
+    <span class="text-2xl">👤</span> Персоны
+  </h1>
+  <nav class="text-sm space-x-3 text-gray-300">
+    <a href="/forge" class="hover:text-white">🪄 Forge</a>
+    <a href="/tracker.html" class="hover:text-white">📊 Tracker</a>
+    <a href="/settings" class="hover:text-white">🔑 Ключи</a>
+    <button id="logout-btn" class="hover:text-white">Выйти</button>
+  </nav>
+</header>
+
+<main class="max-w-4xl mx-auto p-4">
+  <div class="flex justify-between items-center mb-4">
+    <p class="text-sm text-gray-400 max-w-2xl">
+      Персона — фиктивный AI-образ, который ты создаёшь один раз и переиспользуешь
+      во всех ремиксах Forge (Strategy E). Одно лицо бренда на все видео.
+    </p>
+    <button id="new-persona-btn" class="btn-magic px-4 py-2 rounded-lg text-sm font-medium">
+      + Новая персона
+    </button>
+  </div>
+
+  <div id="empty" class="hidden glass rounded-2xl p-8 text-center text-gray-400 text-sm">
+    Пока ни одной персоны. Нажми <strong class="text-white">+ Новая персона</strong> —
+    задай имя и описание, получи 4 кандидата, выбери лучшего. ~$0.20 за создание.
+  </div>
+
+  <div id="grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+</main>
+
+<div id="modal" class="modal fixed inset-0 hidden items-center justify-center p-4 z-50">
+  <div class="glass rounded-2xl p-6 max-w-md w-full">
+    <h2 class="text-lg mb-4">Новая персона</h2>
+    <label class="block text-xs text-gray-400 mb-1">Имя (internal label)</label>
+    <input id="m-name" maxlength="64" placeholder="например: anya-blonde"
+           class="w-full bg-black/40 rounded-lg px-3 py-2 mb-3 border border-white/10">
+    <label class="block text-xs text-gray-400 mb-1">Описание внешности (bio)</label>
+    <textarea id="m-bio" maxlength="512" rows="4"
+              placeholder="блондинка 23 года, голубые глаза, мягкие черты, ровная кожа, лёгкий макияж, мягкий студийный свет"
+              class="w-full bg-black/40 rounded-lg px-3 py-2 mb-3 border border-white/10"></textarea>
+    <label class="block text-xs text-gray-400 mb-1">Стиль (необязательно)</label>
+    <select id="m-style" class="w-full bg-black/40 rounded-lg px-3 py-2 mb-4 border border-white/10">
+      <option value="">— любой —</option>
+      <option value="editorial">editorial — модный журнал</option>
+      <option value="lifestyle">lifestyle — естественный</option>
+      <option value="studio">studio — чистая студия</option>
+      <option value="street">street — кэжуал/улица</option>
+    </select>
+    <div class="flex justify-end gap-2">
+      <button id="m-cancel" class="text-gray-400 hover:text-white px-3 py-2">Отмена</button>
+      <button id="m-submit" class="btn-magic px-4 py-2 rounded-lg text-sm font-medium">
+        Сгенерировать (~$0.20)
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+let ACCESS = localStorage.getItem('access_token');
+if (!ACCESS) { location.href = '/login.html'; }
+function hdr() { return { 'Authorization': 'Bearer ' + ACCESS }; }
+
+async function tryRefresh() {
+  const rt = localStorage.getItem('refresh_token');
+  if (!rt) return false;
+  try {
+    const r = await fetch('/api/auth/refresh', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: rt }),
+    });
+    if (!r.ok) return false;
+    const d = await r.json();
+    if (d.access_token) {
+      ACCESS = d.access_token;
+      localStorage.setItem('access_token', d.access_token);
+      if (d.refresh_token) localStorage.setItem('refresh_token', d.refresh_token);
+      return true;
+    }
+  } catch (e) { console.error('refresh', e); }
+  return false;
+}
+
+async function authFetch(url, opts = {}) {
+  opts.headers = { ...(opts.headers || {}), ...hdr() };
+  let r = await fetch(url, opts);
+  if (r.status === 401) {
+    if (await tryRefresh()) {
+      opts.headers = { ...(opts.headers || {}), ...hdr() };
+      r = await fetch(url, opts);
+    } else {
+      localStorage.clear(); location.href = '/login.html';
+    }
+  }
+  return r;
+}
+
+document.getElementById('logout-btn').onclick = () => {
+  localStorage.clear(); location.href = '/login.html';
+};
+
+let pollTimer = null;
+
+async function refresh() {
+  const r = await authFetch('/api/personas/');
+  if (!r.ok) { document.getElementById('grid').innerHTML = `<div class="text-red-300">Ошибка: ${await r.text()}</div>`; return; }
+  const data = await r.json();
+  const grid = document.getElementById('grid');
+  const empty = document.getElementById('empty');
+  grid.innerHTML = '';
+  if (!data.items.length) { empty.classList.remove('hidden'); return; }
+  empty.classList.add('hidden');
+
+  for (const p of data.items) {
+    const card = document.createElement('div');
+    card.className = 'glass rounded-xl p-3';
+
+    let visual = '';
+    if (p.canonical_face_url) {
+      visual = `<img src="${p.canonical_face_url}" class="rounded-lg mb-3 w-full aspect-[9/16] object-cover">`;
+    } else if (p.status === 'awaiting_canonical' && p.gallery_json.length) {
+      visual = `<div class="text-xs text-gray-400 mb-2">Выбери лучший кадр:</div>
+        <div class="grid grid-cols-2 gap-1 mb-3">`
+        + p.gallery_json.map((g, i) =>
+            `<img src="${g.url}" onclick="pickCanonical(${p.id}, ${i})"
+                  class="cursor-pointer rounded hover:ring-2 hover:ring-purple-400 aspect-[9/16] object-cover">`
+          ).join('') + `</div>`;
+    } else if (p.status === 'generating') {
+      visual = `<div class="aspect-[9/16] bg-black/40 rounded-lg mb-3 flex items-center justify-center text-xs text-gray-400 animate-pulse">
+        генерация 4 кандидатов…
+      </div>`;
+    } else if (p.status === 'failed') {
+      visual = `<div class="aspect-[9/16] bg-red-900/20 rounded-lg mb-3 flex items-center justify-center text-xs text-red-300 p-3 text-center">
+        ${p.error_message || 'не удалось сгенерировать'}
+      </div>`;
+    }
+
+    card.innerHTML = visual + `
+      <div class="text-sm font-medium">${p.name}</div>
+      <div class="text-xs text-gray-400 line-clamp-2 mb-2">${p.bio}</div>
+      <div class="flex justify-between items-center text-xs">
+        ${p.status === 'ready'
+          ? `<a href="/forge?persona=${p.id}" class="text-blue-300 hover:underline">→ Forge E</a>`
+          : `<span class="text-gray-500">${p.status}</span>`}
+        <button onclick="del(${p.id})" class="text-red-300 hover:text-red-100" title="удалить">×</button>
+      </div>
+    `;
+    grid.appendChild(card);
+  }
+}
+
+async function pickCanonical(pid, idx) {
+  const r = await authFetch(`/api/personas/${pid}/canonical`, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({gallery_index: idx}),
+  });
+  if (!r.ok) { alert('❌ ' + await r.text()); return; }
+  refresh();
+}
+
+async function del(pid) {
+  if (!confirm('Удалить персону? Эта операция не удалит уже сгенерированные с её участием видео.')) return;
+  await authFetch(`/api/personas/${pid}`, {method: 'DELETE'});
+  refresh();
+}
+
+document.getElementById('new-persona-btn').onclick = () => {
+  document.getElementById('m-name').value = '';
+  document.getElementById('m-bio').value = '';
+  document.getElementById('m-style').value = '';
+  document.getElementById('modal').classList.remove('hidden');
+  document.getElementById('modal').classList.add('flex');
+};
+
+document.getElementById('m-cancel').onclick = () => {
+  document.getElementById('modal').classList.add('hidden');
+  document.getElementById('modal').classList.remove('flex');
+};
+
+document.getElementById('m-submit').onclick = async () => {
+  const btn = document.getElementById('m-submit');
+  const body = {
+    name: document.getElementById('m-name').value.trim(),
+    bio: document.getElementById('m-bio').value.trim(),
+  };
+  const style = document.getElementById('m-style').value;
+  if (style) body.style_hint = style;
+  if (!body.name || !body.bio) { alert('Имя и описание обязательны'); return; }
+
+  btn.disabled = true; btn.textContent = '⏳ ...';
+  try {
+    const r = await authFetch('/api/personas/', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) { alert('❌ ' + await r.text()); return; }
+    document.getElementById('modal').classList.add('hidden');
+    document.getElementById('modal').classList.remove('flex');
+    await refresh();
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(async () => {
+      await refresh();
+      const data = await (await authFetch('/api/personas/')).json();
+      if (!data.items.some(x => x.status === 'generating')) {
+        clearInterval(pollTimer); pollTimer = null;
+      }
+    }, 5000);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Сгенерировать (~$0.20)';
+  }
+};
+
+refresh();
+</script>
+</body>
+</html>

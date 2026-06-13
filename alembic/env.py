@@ -21,6 +21,7 @@ from app.models import (  # noqa: F401
     GeneratedVideo, PostingTarget, Post,
     CreditTransaction,
     ContentRecipe,
+    Persona,
 )
 
 config = context.config

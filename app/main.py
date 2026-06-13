@@ -3,6 +3,8 @@ ReelsTracker SaaS — FastAPI Application
 """
 
 import logging
+import os
+import threading
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -326,6 +328,15 @@ def run_lightweight_migrations():
         "ALTER TABLE instagram_accounts ADD COLUMN IF NOT EXISTS viral_window_hours INTEGER NOT NULL DEFAULT 12",
         "ALTER TABLE instagram_accounts ADD COLUMN IF NOT EXISTS default_remake_params JSONB",
         "ALTER TABLE instagram_accounts ADD COLUMN IF NOT EXISTS auto_posting_target_id INTEGER",
+        # Strategy E — per-user Replicate token + persona link + mode + per-call costs.
+        # Personas table itself is created via Base.metadata.create_all.
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS replicate_api_key VARCHAR(255)",
+        "ALTER TABLE generated_videos ADD COLUMN IF NOT EXISTS persona_id INTEGER",
+        "ALTER TABLE generated_videos ADD COLUMN IF NOT EXISTS mode SMALLINT",
+        "ALTER TABLE generated_videos ADD COLUMN IF NOT EXISTS cost_runpod_seconds DOUBLE PRECISION",
+        "ALTER TABLE generated_videos ADD COLUMN IF NOT EXISTS cost_replicate_usd NUMERIC(10,4)",
+        "CREATE INDEX IF NOT EXISTS ix_generated_videos_persona_id "
+        "ON generated_videos(persona_id)",
     ]
     # Enum-расширения нужно делать в AUTOCOMMIT (Postgres не разрешает
     # ALTER TYPE ... ADD VALUE внутри транзакции).
@@ -404,6 +415,47 @@ async def lifespan(app: FastAPI):
     start_worker_thread(poll_interval=5)
     logger.info("✅ Scheduler + Worker запущены")
 
+    # Strategy E (face replace) worker — drains generated_videos rows
+    # with mode IS NOT NULL. MVP placement: daemon thread in the web
+    # process, matching the existing parser_worker pattern. Tracked in
+    # Forge tech insights for extraction to a dedicated Railway service.
+    if os.getenv("WORKER_FORGE_E", "1") == "1":
+        from app.database import SessionLocal
+        from app.workers.forge_e_worker import (
+            run_loop as forge_e_loop,
+            sweep_stuck_running as forge_e_sweep,
+        )
+        try:
+            forge_e_sweep(SessionLocal, max_minutes=30)
+        except Exception as e:
+            logger.warning(f"forge_e sweep failed: {e}")
+        threading.Thread(
+            target=forge_e_loop, args=(SessionLocal,),
+            daemon=True, name="forge-e-worker",
+        ).start()
+        logger.info("✅ Forge E worker запущен")
+
+    # RunPod auto-stop tick — every minute, stops the Wan pod if no
+    # Mode 2 row has been RUNNING within WAN_POD_IDLE_MIN minutes.
+    if os.getenv("WAN_POD_AUTOSTOP", "1") == "1":
+        from app.services.runpod_pod import stop_pod_if_idle
+
+        def _wan_pod_autostop_tick():
+            import time as _time
+            idle_min = int(os.getenv("WAN_POD_IDLE_MIN", "10"))
+            while True:
+                try:
+                    stop_pod_if_idle(max_idle_minutes=idle_min)
+                except Exception:
+                    logger.exception("wan pod autostop tick failed")
+                _time.sleep(60)
+
+        threading.Thread(
+            target=_wan_pod_autostop_tick,
+            daemon=True, name="wan-pod-autostop",
+        ).start()
+        logger.info("✅ Wan pod autostop включён")
+
     yield
 
     logger.info("👋 ReelsTracker SaaS остановлен")
@@ -448,6 +500,7 @@ from app.api.magic import router as magic_router
 from app.api.account_insights import router as account_insights_router
 from app.api.forge import router as forge_router
 from app.api.media import router as media_router
+from app.api.personas import router as personas_router
 
 app.include_router(auth_router, prefix="/api/auth", tags=["Auth"])
 app.include_router(reels_router, prefix="/api/reels", tags=["Reels"])
@@ -467,6 +520,7 @@ app.include_router(magic_router, prefix="/api/magic", tags=["Magic"])
 app.include_router(account_insights_router, prefix="/api/account-insights", tags=["AccountInsights"])
 app.include_router(forge_router, prefix="/api/forge", tags=["Forge"])
 app.include_router(media_router, prefix="/api/media", tags=["Media"])
+app.include_router(personas_router, prefix="/api/personas", tags=["Personas"])
 
 # ─── Static Files ──────────────────────────────────────────
 
@@ -497,6 +551,16 @@ async def forge_page_redirect():
 @app.get("/settings")
 async def settings_page_redirect():
     return FileResponse("static/settings.html")
+
+
+@app.get("/personas")
+async def personas_page():
+    return FileResponse("static/personas.html")
+
+
+@app.get("/personas.html")
+async def personas_page_html():
+    return FileResponse("static/personas.html")
 
 
 @app.get("/settings.html")

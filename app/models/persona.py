@@ -19,10 +19,9 @@ from __future__ import annotations
 import enum
 
 from sqlalchemy import (
-    Column, Integer, String, Text, DateTime, ForeignKey,
+    Column, Integer, String, Text, DateTime, ForeignKey, JSON,
     UniqueConstraint, Index,
 )
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -49,7 +48,7 @@ class Persona(Base):
     style_hint = Column(String(32), nullable=True)
     status = Column(String(24), nullable=False, default=PersonaStatus.GENERATING)
     canonical_face_url = Column(Text, nullable=True)
-    gallery_json = Column(JSONB, nullable=False, default=list)
+    gallery_json = Column(JSON, nullable=False, default=list)
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime, nullable=False)
     ready_at = Column(DateTime, nullable=True)

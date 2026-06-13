@@ -64,7 +64,7 @@ def test_mode1_requires_replicate_key(db_session, ready_persona):
     from datetime import datetime
     nokey = User(
         email="nokey@example.com",
-        password_hash="x",
+        hashed_password="x",
         replicate_api_key=None,
     )
     db_session.add(nokey); db_session.commit(); db_session.refresh(nokey)

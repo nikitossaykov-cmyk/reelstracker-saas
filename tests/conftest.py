@@ -19,18 +19,27 @@ from datetime import datetime
 import pytest
 
 
-TEST_DB_URL = os.getenv("TEST_DATABASE_URL")
+# Use TEST_DATABASE_URL when set (real Postgres for prod-parity tests);
+# otherwise fall back to in-memory SQLite for fast / dep-free local runs.
+# All models in this codebase use cross-dialect SQLAlchemy types — JSONB
+# was replaced with JSON specifically to make this fallback viable.
+TEST_DB_URL = os.getenv("TEST_DATABASE_URL") or "sqlite:///:memory:"
 
 
-# ─── DB-backed fixtures (opt-in via TEST_DATABASE_URL) ─────────────────
+# ─── DB-backed fixtures ────────────────────────────────────────────────
 
 @pytest.fixture(scope="session")
 def db_engine():
-    if not TEST_DB_URL:
-        pytest.skip("TEST_DATABASE_URL not set")
     from sqlalchemy import create_engine
     from app.database import Base
-    engine = create_engine(TEST_DB_URL)
+    if TEST_DB_URL.startswith("sqlite"):
+        # in-memory shared between connections within the session
+        engine = create_engine(
+            TEST_DB_URL,
+            connect_args={"check_same_thread": False},
+        )
+    else:
+        engine = create_engine(TEST_DB_URL)
     Base.metadata.create_all(bind=engine)
     yield engine
     engine.dispose()
@@ -56,7 +65,7 @@ def test_user(db_session):
     from app.models.user import User
     u = User(
         email="t@example.com",
-        password_hash="x",
+        hashed_password="x",
         replicate_api_key="rk-test",
     )
     db_session.add(u)
@@ -68,7 +77,7 @@ def test_user(db_session):
 @pytest.fixture
 def other_user(db_session):
     from app.models.user import User
-    u = User(email="o@example.com", password_hash="x")
+    u = User(email="o@example.com", hashed_password="x")
     db_session.add(u)
     db_session.commit()
     db_session.refresh(u)

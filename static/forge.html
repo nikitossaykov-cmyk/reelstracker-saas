@@ -505,7 +505,7 @@ async function pollStrategyC(gvId) {
       if (d.status === 'ready' && d.media_url) {
         clearInterval(tick);
         card.remove();
-        showStrategyBResult({media_url: d.media_url, cost_actual_usd: 0});
+        showStrategyBResult({media_url: d.media_url, cost_actual_usd: 0, gv_id: gvId});
         return true;
       }
       if (d.status === 'failed') {
@@ -546,6 +546,14 @@ function showStrategyBResult(d) {
     return;
   }
   res.classList.remove('hidden');
+  if (d.gv_id) currentGvId = d.gv_id;
+  const v = document.getElementById('result-video');
+  if (v) v.src = d.media_url;
+  const dl = document.getElementById('result-download');
+  if (dl) {
+    dl.href = d.media_url;
+    dl.download = `forge-${currentGvId || 'remix'}.mp4`;
+  }
 }
 
 function startPolling() {

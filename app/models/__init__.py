@@ -13,6 +13,7 @@ from app.models.generation import (
 )
 from app.models.billing import CreditTransaction, TransactionType
 from app.models.recipe import ContentRecipe
+from app.models.persona import Persona, PersonaStatus
 
 __all__ = [
     "User",
@@ -30,4 +31,6 @@ __all__ = [
     "CreditTransaction",
     "TransactionType",
     "ContentRecipe",
+    "Persona",
+    "PersonaStatus",
 ]

@@ -31,7 +31,7 @@ from app.models.generation import VideoProvider
 router = APIRouter()
 
 
-Strategy = Literal["A", "B", "C", "D"]
+Strategy = Literal["A", "B", "C", "D", "E"]
 
 
 class ForgeStartRequest(BaseModel):
@@ -56,6 +56,9 @@ class ForgeStartRequest(BaseModel):
     d_hook_seconds: float = Field(5.0, ge=2.0, le=10.0)
     d_tts_voice: str = Field("nova", max_length=32)
     face_description: Optional[str] = Field(None, max_length=512)
+    # E-specific (face replace using a persona from the library)
+    persona_id: Optional[int] = None
+    e_mode: Optional[int] = Field(None, ge=1, le=2)
 
 
 class ForgeStartResponse(BaseModel):
@@ -90,6 +93,10 @@ def _estimate_cost(strategy: Strategy, duration_seconds: int, model: Optional[st
     if strategy == "D":
         # 2 gpt-image-1 keyframes + tts-1 + LLM + Whisper
         return 0.10
+    if strategy == "E":
+        # Mode 1 (face only) ~ $0.05; Mode 2 (face+body via Wan) ~ $0.20.
+        # We don't yet plumb mode here — caller branch reads it.
+        return 0.20
     return 0.0
 
 
@@ -201,6 +208,30 @@ def forge_start(
             strategy="D",
             gv_id=gv_id,
             next_step=f"poll GET /api/media/diag/{gv_id} until status=ready",
+            cost_estimate_usd=cost,
+        )
+
+    if data.strategy == "E":
+        if data.persona_id is None or data.e_mode is None:
+            raise HTTPException(
+                400, detail="persona_id and e_mode required for strategy E",
+            )
+        from app.services.forge_e_service import (
+            start_e, ForgeEValidationError,
+        )
+        try:
+            gv = start_e(
+                db, current_user,
+                source_url=data.source_url,
+                persona_id=data.persona_id,
+                mode=data.e_mode,
+            )
+        except ForgeEValidationError as e:
+            raise HTTPException(400, detail=str(e))
+        return ForgeStartResponse(
+            strategy="E",
+            gv_id=gv.id,
+            next_step=f"poll GET /api/media/diag/{gv.id} until status=ready",
             cost_estimate_usd=cost,
         )
 

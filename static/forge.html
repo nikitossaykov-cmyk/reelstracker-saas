@@ -78,6 +78,10 @@
       <div>🎭 D · React</div>
       <div class="text-[10px] text-gray-500 mt-0.5">хук + AI-блогер · ~$0.10 · 1-2 мин</div>
     </button>
+    <button data-strategy="E" class="strat-tab flex-1 py-3 rounded-t-lg text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-white">
+      <div>👤 E · Замена девушки</div>
+      <div class="text-[10px] text-gray-500 mt-0.5">persona face/body swap · ~$0.05–0.20 · 1–10 мин</div>
+    </button>
   </div>
 
   <!-- INPUT -->
@@ -197,6 +201,51 @@
       </div>
       <div class="mt-3 p-2 bg-green-900/20 border border-green-500/30 rounded text-xs text-green-200">
         ✅ ~$0.10 за ремейк, ~1-2 мин в фоне. Требует openai_api_key. Источник — TikTok/YouTube/IG (для IG только если cookies прокатят).
+      </div>
+    </div>
+
+    <!-- TAB E: Face / body replace with locked persona -->
+    <div id="tab-E" class="strat-pane mb-5 hidden">
+      <div class="mb-3 p-3 bg-purple-900/15 border border-purple-500/20 rounded text-xs text-gray-300">
+        💡 <strong>Замена девушки на персону.</strong> Берём чужое видео-донор, оставляем монтаж/продукт/обстановку, меняем только саму девушку на твою закреплённую AI-персону.
+        <strong>Mode 1</strong> — только лицо (быстро/дёшево). <strong>Mode 2</strong> — лицо + тело + одежда через твой Wan-Animate (медленнее/дороже, но контроль над типажом). Персону создай один раз в <a href="/personas" class="underline text-purple-300">👤 Persona Library</a>.
+      </div>
+
+      <div class="mb-3">
+        <label class="block text-xs text-gray-400 mb-1">Персона</label>
+        <div class="flex gap-2">
+          <select name="persona_id" id="e-persona-select" class="flex-1 bg-black/40 border border-white/10 px-3 py-2 rounded text-sm">
+            <option value="">— загрузка —</option>
+          </select>
+          <a href="/personas" class="btn-magic px-3 py-2 rounded text-sm font-medium whitespace-nowrap">+ Новая</a>
+        </div>
+        <div id="e-persona-empty" class="hidden text-xs text-amber-300 mt-2">
+          Ещё нет ни одной готовой персоны. <a href="/personas" class="underline">Создай первую →</a>
+        </div>
+      </div>
+
+      <div class="mb-3">
+        <label class="block text-xs text-gray-400 mb-2">Режим</label>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="cursor-pointer">
+            <input type="radio" name="e_mode" value="1" checked class="peer hidden">
+            <div class="p-3 rounded-lg border border-white/10 bg-black/40 peer-checked:border-purple-500 peer-checked:bg-purple-900/20">
+              <div class="text-sm font-medium">Mode 1 · Только лицо</div>
+              <div class="text-[11px] text-gray-400 mt-0.5">~$0.05 · 30–120 сек · Replicate</div>
+            </div>
+          </label>
+          <label class="cursor-pointer">
+            <input type="radio" name="e_mode" value="2" class="peer hidden">
+            <div class="p-3 rounded-lg border border-white/10 bg-black/40 peer-checked:border-purple-500 peer-checked:bg-purple-900/20">
+              <div class="text-sm font-medium">Mode 2 · Лицо + тело</div>
+              <div class="text-[11px] text-gray-400 mt-0.5">~$0.20 · 5–10 мин · Wan-Animate (RunPod)</div>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <div class="mt-3 p-2 bg-green-900/20 border border-green-500/30 rounded text-xs text-green-200">
+        ✅ Mode 1 требует replicate_api_key. Mode 2 — без ключа, RunPod на платформе (пока). Источник — любое видео которое скачивает yt-dlp/Apify.
       </div>
     </div>
 
@@ -331,6 +380,7 @@ const STRATEGY_META = {
   B: { label: '🔀 B · Уникализатор', est: '~30 сек · ~$0.01', cost: 0.01 },
   C: { label: '🎨 C · Frame edit', est: '~5-10 мин · ~$1.50', cost: 1.50 },
   D: { label: '🎭 D · React', est: '~1-2 мин · ~$0.10', cost: 0.10 },
+  E: { label: '👤 E · Замена девушки', est: '~1-10 мин · ~$0.05–0.20', cost: 0.20 },
 };
 
 document.querySelectorAll('.strat-tab').forEach(btn => {
@@ -347,8 +397,52 @@ document.querySelectorAll('.strat-tab').forEach(btn => {
     document.getElementById(`tab-${activeStrategy}`).classList.remove('hidden');
     document.getElementById('estimate-line').textContent =
       `стратегия ${activeStrategy} · ${STRATEGY_META[activeStrategy].est}`;
+    if (activeStrategy === 'E') loadPersonasIntoSelect();
   });
 });
+
+async function loadPersonasIntoSelect() {
+  const sel = document.getElementById('e-persona-select');
+  const empty = document.getElementById('e-persona-empty');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— загрузка —</option>';
+  try {
+    const r = await authFetch('/api/personas/');
+    if (!r.ok) {
+      sel.innerHTML = '<option value="">— ошибка загрузки —</option>';
+      return;
+    }
+    const data = await r.json();
+    const ready = (data.items || []).filter(p => p.status === 'ready');
+    sel.innerHTML = '';
+    if (!ready.length) {
+      sel.innerHTML = '<option value="">— нет готовых персон —</option>';
+      empty.classList.remove('hidden');
+    } else {
+      empty.classList.add('hidden');
+      for (const p of ready) {
+        const o = document.createElement('option');
+        o.value = p.id;
+        o.textContent = p.name;
+        sel.appendChild(o);
+      }
+      // Deep-link from /personas?persona=N — preselect
+      const qs = new URLSearchParams(location.search);
+      if (qs.get('persona')) sel.value = qs.get('persona');
+    }
+  } catch (e) {
+    sel.innerHTML = '<option value="">— ошибка —</option>';
+  }
+}
+
+// Auto-activate E tab when deep-linked from /personas
+(function _autoActivateEFromQuery() {
+  const qs = new URLSearchParams(location.search);
+  if (qs.get('persona')) {
+    const btn = document.querySelector('.strat-tab[data-strategy="E"]');
+    if (btn) btn.click();
+  }
+})();
 
 function getParams() {
   // Read from the *active* tab pane only (different tabs may share name=).
@@ -407,6 +501,14 @@ function getParams() {
       d_tts_voice: v('d_tts_voice') || 'nova',
     };
   }
+  if (activeStrategy === 'E') {
+    const pid = parseInt(v('persona_id') || '0', 10);
+    const modeRadio = pane.querySelector('input[name="e_mode"]:checked');
+    return {
+      persona_id: pid || null,
+      e_mode: modeRadio ? parseInt(modeRadio.value, 10) : null,
+    };
+  }
   return {};
 }
 
@@ -455,8 +557,8 @@ async function startForge() {
     }
 
     // Strategy C runs async in a background thread. Poll diag endpoint.
-    if ((activeStrategy === 'C' || activeStrategy === 'D') && data.gv_id) {
-      pollStrategyC(data.gv_id);  // same async/poll/render flow for both
+    if ((activeStrategy === 'C' || activeStrategy === 'D' || activeStrategy === 'E') && data.gv_id) {
+      pollStrategyC(data.gv_id);  // same async/poll/render flow for all three
       return;
     }
 
@@ -505,7 +607,7 @@ async function pollStrategyC(gvId) {
       if (d.status === 'ready' && d.media_url) {
         clearInterval(tick);
         card.remove();
-        showStrategyBResult({media_url: d.media_url, cost_actual_usd: 0});
+        showStrategyBResult({media_url: d.media_url, cost_actual_usd: 0, gv_id: gvId});
         return true;
       }
       if (d.status === 'failed') {
@@ -546,6 +648,14 @@ function showStrategyBResult(d) {
     return;
   }
   res.classList.remove('hidden');
+  if (d.gv_id) currentGvId = d.gv_id;
+  const v = document.getElementById('result-video');
+  if (v) v.src = d.media_url;
+  const dl = document.getElementById('result-download');
+  if (dl) {
+    dl.href = d.media_url;
+    dl.download = `forge-${currentGvId || 'remix'}.mp4`;
+  }
 }
 
 function startPolling() {

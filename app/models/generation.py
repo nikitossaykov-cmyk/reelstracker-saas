@@ -7,8 +7,8 @@ PR #1: только модели + миграция. Workers/UI/billing-logic �
 import enum
 from datetime import datetime
 from sqlalchemy import (
-    Column, Integer, BigInteger, String, Boolean, DateTime,
-    ForeignKey, Enum, Text, JSON, Index, UniqueConstraint,
+    Column, Integer, BigInteger, SmallInteger, String, Boolean, DateTime,
+    Float, Numeric, ForeignKey, Enum, Text, JSON, Index, UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -75,6 +75,15 @@ class GeneratedVideo(Base):
     uniq_media_url = Column(String(1024), nullable=True)
     uniq_storage_key = Column(String(512), nullable=True)
     uniqified_at = Column(DateTime, nullable=True)
+
+    # Strategy E (face replace) — persona reference + mode + per-call costs.
+    # mode: 1 = face only (Replicate), 2 = face + body (RunPod Wan-Animate).
+    persona_id = Column(Integer,
+                        ForeignKey("personas.id", ondelete="SET NULL"),
+                        nullable=True, index=True)
+    mode = Column(SmallInteger, nullable=True)
+    cost_runpod_seconds = Column(Float, nullable=True)
+    cost_replicate_usd = Column(Numeric(10, 4), nullable=True)
 
     error_message = Column(Text, nullable=True)
 

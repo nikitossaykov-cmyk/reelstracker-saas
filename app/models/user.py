@@ -49,6 +49,7 @@ class User(Base):
     runway_api_key = Column(String(255), nullable=True)
     elevenlabs_api_key = Column(String(255), nullable=True)
     openai_api_key = Column(String(255), nullable=True)
+    replicate_api_key = Column(String(255), nullable=True)
 
     # Relationships
     reels = relationship("Reel", back_populates="user", cascade="all, delete-orphan")

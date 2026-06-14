@@ -415,6 +415,18 @@ async def lifespan(app: FastAPI):
     start_worker_thread(poll_interval=5)
     logger.info("✅ Scheduler + Worker запущены")
 
+    # Persona library worker — drains 'personas' rows in GENERATING
+    # via Replicate PuLID-Flux. Mandatory for Strategy E: without it
+    # the create-persona flow hangs forever at "генерация 4 кандидатов".
+    if os.getenv("WORKER_PERSONA", "1") == "1":
+        from app.database import SessionLocal as _PersonaSession
+        from app.workers.persona_worker import run_loop as persona_loop
+        threading.Thread(
+            target=persona_loop, args=(_PersonaSession,),
+            daemon=True, name="persona-worker",
+        ).start()
+        logger.info("✅ Persona worker запущен")
+
     # Strategy E (face replace) worker — drains generated_videos rows
     # with mode IS NOT NULL. MVP placement: daemon thread in the web
     # process, matching the existing parser_worker pattern. Tracked in

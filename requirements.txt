@@ -41,3 +41,6 @@ openai==1.30.0
 
 # Magic Mode — yt-dlp to grab MP4 from IG/TT/YT URLs without Apify
 yt-dlp==2026.3.17
+
+# Forge Strategy E / Persona library — Replicate (PuLID-Flux, face-replace models)
+replicate==1.0.7

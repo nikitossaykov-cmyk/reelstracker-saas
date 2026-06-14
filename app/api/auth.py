@@ -111,13 +111,16 @@ def get_me(current_user: User = Depends(get_current_user)):
 class ApiKeysUpdate(BaseModel):
     openai_api_key: Optional[str] = Field(None, max_length=255)
     runway_api_key: Optional[str] = Field(None, max_length=255)
+    replicate_api_key: Optional[str] = Field(None, max_length=255)
 
 
 class ApiKeysStatus(BaseModel):
     openai_set: bool
     runway_set: bool
+    replicate_set: bool
     openai_preview: Optional[str] = None  # first 8 + last 4 chars only
     runway_preview: Optional[str] = None
+    replicate_preview: Optional[str] = None
 
 
 @router.get("/me/keys", response_model=ApiKeysStatus)
@@ -131,8 +134,10 @@ def get_my_keys(current_user: User = Depends(get_current_user)):
     return ApiKeysStatus(
         openai_set=bool(current_user.openai_api_key),
         runway_set=bool(current_user.runway_api_key),
+        replicate_set=bool(current_user.replicate_api_key),
         openai_preview=_preview(current_user.openai_api_key),
         runway_preview=_preview(current_user.runway_api_key),
+        replicate_preview=_preview(current_user.replicate_api_key),
     )
 
 
@@ -142,12 +147,15 @@ def update_my_keys(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Сохранить OpenAI / Runway API-ключи в профиль. Пустая строка ('')
-    означает «оставить как есть»; чтобы стереть — отправляй null."""
+    """Сохранить OpenAI / Runway / Replicate API-ключи в профиль.
+    Пустая строка ('') означает «оставить как есть»; чтобы стереть —
+    отправляй null."""
     if data.openai_api_key is not None:
         current_user.openai_api_key = data.openai_api_key.strip() or None
     if data.runway_api_key is not None:
         current_user.runway_api_key = data.runway_api_key.strip() or None
+    if data.replicate_api_key is not None:
+        current_user.replicate_api_key = data.replicate_api_key.strip() or None
     db.commit()
     db.refresh(current_user)
     return get_my_keys(current_user)

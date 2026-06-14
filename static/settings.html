@@ -52,6 +52,15 @@
       </div>
     </div>
 
+    <div class="mb-5">
+      <label class="block text-sm text-gray-300 mb-1 font-medium">Replicate API key</label>
+      <div class="text-xs text-gray-500 mb-2">Нужен для: создания персон (PuLID-Flux) и Strategy E Mode 1 (face-swap). Формат <code>r8_...</code>. Взять на <a href="https://replicate.com/account/api-tokens" target="_blank" class="text-purple-400 underline">replicate.com/account/api-tokens</a>.</div>
+      <div class="flex gap-2">
+        <input id="replicate-input" type="password" placeholder="r8_..." class="flex-1 bg-black/40 border border-white/10 px-3 py-2 rounded text-sm font-mono" />
+        <button onclick="clearKey('replicate')" class="px-3 py-2 text-xs bg-red-900/40 hover:bg-red-900/60 rounded">🗑</button>
+      </div>
+    </div>
+
     <button id="save-btn" onclick="save()" class="btn-magic w-full py-3 rounded-xl text-sm font-bold text-white">💾 Сохранить</button>
     <div id="msg" class="text-xs text-center mt-3 h-4"></div>
   </section>
@@ -96,19 +105,22 @@ async function loadStatus() {
   const d = await r.json();
   const oS = d.openai_set ? `<span class="text-green-400">✅ установлен (${d.openai_preview || ''})</span>` : '<span class="text-yellow-400">⚠️ не задан</span>';
   const rS = d.runway_set ? `<span class="text-green-400">✅ установлен (${d.runway_preview || ''})</span>` : '<span class="text-yellow-400">⚠️ не задан</span>';
-  document.getElementById('status').innerHTML = `OpenAI: ${oS} · Runway: ${rS}`;
+  const repS = d.replicate_set ? `<span class="text-green-400">✅ установлен (${d.replicate_preview || ''})</span>` : '<span class="text-yellow-400">⚠️ не задан</span>';
+  document.getElementById('status').innerHTML = `OpenAI: ${oS} · Runway: ${rS} · Replicate: ${repS}`;
 }
 
 async function save() {
   const o = document.getElementById('openai-input').value.trim();
   const r = document.getElementById('runway-input').value.trim();
-  if (!o && !r) {
+  const rep = document.getElementById('replicate-input').value.trim();
+  if (!o && !r && !rep) {
     document.getElementById('msg').innerHTML = '<span class="text-yellow-400">Заполни хотя бы одно поле</span>';
     return;
   }
   const body = {};
   if (o) body.openai_api_key = o;
   if (r) body.runway_api_key = r;
+  if (rep) body.replicate_api_key = rep;
   const btn = document.getElementById('save-btn');
   btn.disabled = true; btn.textContent = '⏳ Сохраняю...';
   const resp = await authFetch(API, {method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
@@ -120,13 +132,19 @@ async function save() {
   }
   document.getElementById('openai-input').value = '';
   document.getElementById('runway-input').value = '';
+  document.getElementById('replicate-input').value = '';
   document.getElementById('msg').innerHTML = '<span class="text-green-400">✅ Сохранено</span>';
   await loadStatus();
 }
 
 async function clearKey(which) {
   if (!confirm(`Удалить ${which.toUpperCase()} API key из профиля?`)) return;
-  const body = which === 'openai' ? {openai_api_key: null} : {runway_api_key: null};
+  const KEYMAP = {
+    openai: 'openai_api_key',
+    runway: 'runway_api_key',
+    replicate: 'replicate_api_key',
+  };
+  const body = {[KEYMAP[which]]: null};
   // null is sent via custom body since JSON.stringify handles it.
   const resp = await authFetch(API, {method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
   if (resp.ok) {

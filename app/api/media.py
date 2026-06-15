@@ -22,8 +22,11 @@ from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import StreamingResponse, Response
 from sqlalchemy.orm import Session
 
+from sqlalchemy import String as SAString, cast
+
 from app.database import get_db
 from app.models.generation import GeneratedVideo
+from app.models.persona import Persona
 from app.models.reel import Reel
 
 logger = logging.getLogger(__name__)
@@ -43,7 +46,15 @@ def _verify_key_in_db(key: str, db: Session) -> bool:
     has_reel = (db.query(Reel)
                 .filter(Reel.media_storage_key == key)
                 .first() is not None)
-    return has_reel
+    if has_reel:
+        return True
+    has_persona = (db.query(Persona)
+                   .filter(
+                       cast(Persona.gallery_json, SAString).contains(key)
+                       | Persona.canonical_face_url.contains(key)
+                   )
+                   .first() is not None)
+    return has_persona
 
 
 def _parse_range(header: Optional[str], size: int) -> Optional[tuple[int, int]]:

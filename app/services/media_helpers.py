@@ -20,6 +20,17 @@ DEFAULT_TEMP_PREFIX = "_tmp"
 
 
 def download_bytes(url: str, timeout: int = 60) -> bytes:
+    from urllib.parse import parse_qs, urlparse
+
+    parsed = urlparse(url)
+    if parsed.path.endswith("/api/media"):
+        key = parse_qs(parsed.query).get("key", [None])[0]
+        if key:
+            from app.core.storage import get_r2
+            r2 = get_r2()
+            obj = r2._client.get_object(Bucket=r2.bucket, Key=key)
+            return obj["Body"].read()
+
     import requests
     r = requests.get(url, timeout=timeout)
     r.raise_for_status()

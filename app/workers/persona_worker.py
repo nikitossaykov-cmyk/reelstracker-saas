@@ -37,7 +37,7 @@ from app.core.storage import get_r2
 log = logging.getLogger(__name__)
 
 
-REPLICATE_MODEL = "lucataco/pulid-flux"
+REPLICATE_MODEL = "black-forest-labs/flux-schnell"
 SEEDS = [101, 202, 303, 404]
 
 

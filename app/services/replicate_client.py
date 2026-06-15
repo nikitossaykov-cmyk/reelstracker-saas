@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 import re
+import time
 from typing import Any
 
 
@@ -25,6 +26,13 @@ TRANSIENT_PAT = re.compile(
     r"(timeout|timed out|502|503|504|temporarily unavailable|gateway)",
     re.IGNORECASE,
 )
+RATE_LIMIT_PAT = re.compile(
+    r"(\b429\b|throttl|rate limit|too many requests)",
+    re.IGNORECASE,
+)
+
+RATE_LIMIT_MAX_RETRIES = 3
+RATE_LIMIT_BASE_DELAY_SEC = 8
 
 
 class ReplicateError(Exception):
@@ -48,12 +56,21 @@ class ReplicateClient:
     def run_model(self, ref: str, params: dict[str, Any]):
         os.environ["REPLICATE_API_TOKEN"] = self.api_key
         import replicate
-        try:
-            return replicate.run(ref, input=params)
-        except Exception as e:
-            msg = str(e)
-            if SAFETY_PAT.search(msg):
-                raise ReplicateSafetyError(msg) from e
-            if TRANSIENT_PAT.search(msg):
-                raise ReplicateTransientError(msg) from e
-            raise ReplicateError(msg) from e
+        attempts = 0
+        while True:
+            try:
+                return replicate.run(ref, input=params)
+            except Exception as e:
+                msg = str(e)
+                if (
+                    RATE_LIMIT_PAT.search(msg)
+                    and attempts < RATE_LIMIT_MAX_RETRIES
+                ):
+                    attempts += 1
+                    time.sleep(RATE_LIMIT_BASE_DELAY_SEC * attempts)
+                    continue
+                if SAFETY_PAT.search(msg):
+                    raise ReplicateSafetyError(msg) from e
+                if TRANSIENT_PAT.search(msg):
+                    raise ReplicateTransientError(msg) from e
+                raise ReplicateError(msg) from e

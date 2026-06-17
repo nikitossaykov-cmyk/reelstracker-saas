@@ -26,6 +26,7 @@ from sqlalchemy import String as SAString, cast
 
 from app.database import get_db
 from app.models.generation import GeneratedVideo
+from app.models.makeugc_job import MakeUGCJob
 from app.models.persona import Persona
 from app.models.reel import Reel
 
@@ -54,7 +55,18 @@ def _verify_key_in_db(key: str, db: Session) -> bool:
                        | Persona.canonical_face_url.contains(key)
                    )
                    .first() is not None)
-    return has_persona
+    if has_persona:
+        return True
+    has_makeugc = (db.query(MakeUGCJob)
+                   .filter(
+                       (MakeUGCJob.product_image_key == key)
+                       | (MakeUGCJob.portrait_key == key)
+                       | (MakeUGCJob.voiceover_key == key)
+                       | (MakeUGCJob.lipsync_key == key)
+                       | (MakeUGCJob.output_key == key)
+                   )
+                   .first() is not None)
+    return has_makeugc
 
 
 def _parse_range(header: Optional[str], size: int) -> Optional[tuple[int, int]]:

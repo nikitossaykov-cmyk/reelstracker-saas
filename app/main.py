@@ -447,6 +447,19 @@ async def lifespan(app: FastAPI):
         ).start()
         logger.info("✅ Forge E worker запущен")
 
+    # MakeUGC worker — drains makeugc_jobs rows through the UGC reel
+    # pipeline (Strategy MakeUGC). Scaffold scope: PENDING → PORTRAIT →
+    # READY only; voiceover / lipsync / cutaway / concat land in
+    # follow-up PRs.
+    if os.getenv("WORKER_MAKEUGC", "1") == "1":
+        from app.database import SessionLocal as _MakeUGCSession
+        from app.workers.makeugc_worker import run_loop as makeugc_loop
+        threading.Thread(
+            target=makeugc_loop, args=(_MakeUGCSession,),
+            daemon=True, name="makeugc-worker",
+        ).start()
+        logger.info("✅ MakeUGC worker запущен")
+
     # RunPod auto-stop tick — every minute, stops the Wan pod if no
     # Mode 2 row has been RUNNING within WAN_POD_IDLE_MIN minutes.
     if os.getenv("WAN_POD_AUTOSTOP", "1") == "1":
@@ -513,6 +526,7 @@ from app.api.account_insights import router as account_insights_router
 from app.api.forge import router as forge_router
 from app.api.media import router as media_router
 from app.api.personas import router as personas_router
+from app.api.makeugc import router as makeugc_router
 
 app.include_router(auth_router, prefix="/api/auth", tags=["Auth"])
 app.include_router(reels_router, prefix="/api/reels", tags=["Reels"])
@@ -533,6 +547,7 @@ app.include_router(account_insights_router, prefix="/api/account-insights", tags
 app.include_router(forge_router, prefix="/api/forge", tags=["Forge"])
 app.include_router(media_router, prefix="/api/media", tags=["Media"])
 app.include_router(personas_router, prefix="/api/personas", tags=["Personas"])
+app.include_router(makeugc_router, prefix="/api/makeugc", tags=["MakeUGC"])
 
 # ─── Static Files ──────────────────────────────────────────
 

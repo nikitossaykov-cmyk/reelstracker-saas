@@ -60,6 +60,11 @@ class MakeUGCJob(Base):
     lipsync_key = Column(Text, nullable=True)
     output_key = Column(Text, nullable=True)
 
+    # The voiceover script — generated from premium_brand / prices /
+    # product_name before TTS. Persisted so the user can see and (later)
+    # tweak what the persona says.
+    script_text = Column(Text, nullable=True)
+
     status = Column(String(24), nullable=False, default=MakeUGCStatus.PENDING)
     error_message = Column(Text, nullable=True)
     cost_usd = Column(Numeric(8, 4), nullable=False, default=0)

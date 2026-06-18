@@ -337,6 +337,13 @@ def run_lightweight_migrations():
         "ALTER TABLE generated_videos ADD COLUMN IF NOT EXISTS cost_replicate_usd NUMERIC(10,4)",
         "CREATE INDEX IF NOT EXISTS ix_generated_videos_persona_id "
         "ON generated_videos(persona_id)",
+        # MakeUGC — shared ElevenLabs quota tracker + voiceover script
+        # column on jobs. Table itself is created via create_all.
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS "
+        "makeugc_chars_used_this_month BIGINT NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS "
+        "makeugc_quota_reset_at TIMESTAMP",
+        "ALTER TABLE makeugc_jobs ADD COLUMN IF NOT EXISTS script_text TEXT",
     ]
     # Enum-расширения нужно делать в AUTOCOMMIT (Postgres не разрешает
     # ALTER TYPE ... ADD VALUE внутри транзакции).

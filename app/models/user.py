@@ -51,6 +51,13 @@ class User(Base):
     openai_api_key = Column(String(255), nullable=True)
     replicate_api_key = Column(String(255), nullable=True)
 
+    # MakeUGC: counter for chars rendered via the SHARED ElevenLabs key.
+    # Reset to 0 at the start of each calendar month; enforced by the
+    # makeugc_worker before every TTS call. Per-user voice cloning quotas
+    # arrive when we wire user-supplied ElevenLabs keys into the form.
+    makeugc_chars_used_this_month = Column(BigInteger, default=0, nullable=False)
+    makeugc_quota_reset_at = Column(DateTime, nullable=True)
+
     # Relationships
     reels = relationship("Reel", back_populates="user", cascade="all, delete-orphan")
     parse_jobs = relationship("ParseJob", back_populates="user", cascade="all, delete-orphan")

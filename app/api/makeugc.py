@@ -41,6 +41,7 @@ class MakeUGCJobResponse(BaseModel):
     voiceover_key: Optional[str]
     lipsync_key: Optional[str]
     output_key: Optional[str]
+    script_text: Optional[str]
     error_message: Optional[str]
     cost_usd: float
     created_at: str
@@ -60,6 +61,7 @@ class MakeUGCJobResponse(BaseModel):
             voiceover_key=j.voiceover_key,
             lipsync_key=j.lipsync_key,
             output_key=j.output_key,
+            script_text=j.script_text,
             error_message=j.error_message,
             cost_usd=float(j.cost_usd or 0),
             created_at=j.created_at.isoformat(),

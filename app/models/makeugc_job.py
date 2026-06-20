@@ -50,8 +50,8 @@ class MakeUGCJob(Base):
     product_image_key = Column(Text, nullable=False)
     product_name = Column(String(128), nullable=False)
     premium_brand = Column(String(128), nullable=False)
-    premium_price_usd = Column(Numeric(8, 2), nullable=False)
-    mimic_price_usd = Column(Numeric(8, 2), nullable=False)
+    premium_price_rub = Column(Numeric(10, 2), nullable=False)
+    mimic_price_rub = Column(Numeric(10, 2), nullable=False)
     persona_style = Column(String(32), nullable=False, default="average-girl")
 
     # Stage outputs (filled as the worker progresses)

@@ -153,8 +153,8 @@ def process_job(db: Session, j: MakeUGCJob, user: User) -> None:
                 j.script_text = generate_script(
                     product_name=j.product_name,
                     premium_brand=j.premium_brand,
-                    premium_price_usd=float(j.premium_price_usd),
-                    mimic_price_usd=float(j.mimic_price_usd),
+                    premium_price_rub=float(j.premium_price_rub),
+                    mimic_price_rub=float(j.mimic_price_rub),
                     persona_style=j.persona_style,
                     openai_api_key=openai_key,
                 )

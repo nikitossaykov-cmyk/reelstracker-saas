@@ -42,8 +42,8 @@ def create_makeugc_job_async(
     product_image_content_type: str,
     product_name: str,
     premium_brand: str,
-    premium_price_usd: Decimal,
-    mimic_price_usd: Decimal,
+    premium_price_rub: Decimal,
+    mimic_price_rub: Decimal,
     persona_style: str,
 ) -> MakeUGCJob:
     product_name = (product_name or "").strip()
@@ -57,10 +57,10 @@ def create_makeugc_job_async(
             f"unknown persona_style: {persona_style} "
             f"(allowed: {sorted(VALID_STYLES)})"
         )
-    if premium_price_usd <= 0:
-        raise MakeUGCValidationError("premium_price_usd must be > 0")
-    if mimic_price_usd <= 0:
-        raise MakeUGCValidationError("mimic_price_usd must be > 0")
+    if premium_price_rub <= 0:
+        raise MakeUGCValidationError("premium_price_rub must be > 0")
+    if mimic_price_rub <= 0:
+        raise MakeUGCValidationError("mimic_price_rub must be > 0")
 
     if not product_image_bytes:
         raise MakeUGCValidationError("product image is empty")
@@ -91,8 +91,8 @@ def create_makeugc_job_async(
         product_image_key=product_key,
         product_name=product_name,
         premium_brand=premium_brand,
-        premium_price_usd=premium_price_usd,
-        mimic_price_usd=mimic_price_usd,
+        premium_price_rub=premium_price_rub,
+        mimic_price_rub=mimic_price_rub,
         persona_style=persona_style,
         status=MakeUGCStatus.PENDING,
         cost_usd=Decimal("0"),

@@ -47,7 +47,7 @@ STYLE_PROMPTS: dict[str, str] = {
     "brunette-glasses": (
         "European brunette woman, 28-32 years old, straight dark hair, "
         "thin gold-frame glasses, neutral knit sweater, soft daylight in "
-        "a minimalist apartment, holding this exact perfume bottle close "
+        "a minimalist apartment, holding this exact small 30 ml perfume bottle (palm-sized, compact, fits easily in one hand) close "
         "to the camera with both hands, thoughtful smile, looking at the "
         "camera, lifestyle reviewer aesthetic, shallow depth of field, "
         "vertical portrait composition. Keep the perfume bottle and its "

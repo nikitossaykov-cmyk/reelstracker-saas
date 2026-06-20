@@ -88,180 +88,175 @@ def process_job(db: Session, j: MakeUGCJob, user: User) -> None:
         _fail(db, j, "У пользователя нет Replicate API key — задай его в /settings")
         return
 
-    # --- Stage: PORTRAIT ---
-    _mark_stage(db, j, MakeUGCStatus.PORTRAIT)
     r2 = get_r2()
+    # Fetch product image once — needed by portrait stage and possibly
+    # bottle-hero stage downstream.
+    product_obj = r2._client.get_object(
+        Bucket=r2.bucket, Key=j.product_image_key
+    )
+    product_bytes = product_obj["Body"].read()
+    product_ct = product_obj.get("ContentType") or "image/jpeg"
 
-    try:
-        obj = r2._client.get_object(Bucket=r2.bucket, Key=j.product_image_key)
-        product_bytes = obj["Body"].read()
-        product_ct = obj.get("ContentType") or "image/jpeg"
-
-        result, cost = generate_portrait(
-            product_image_bytes=product_bytes,
-            product_content_type=product_ct,
-            persona_style=j.persona_style,
-            replicate_api_key=replicate_api_key,
-            model=MODEL_MAX,
-        )
-
-        # FileOutput already gave us bytes; otherwise it's a URL we must fetch.
-        if isinstance(result, (bytes, bytearray)):
-            blob = bytes(result)
-        else:
-            blob = download_bytes(result, timeout=120)
-        key = (
-            f"users/{j.user_id}/makeugc/{j.id}/"
-            f"portrait-{uuid.uuid4().hex[:6]}.jpg"
-        )
-        r2.upload_bytes(key, blob, content_type="image/jpeg")
-        j.portrait_key = key
-        j.cost_usd = (j.cost_usd or Decimal("0")) + Decimal(str(cost))
-        db.commit()
-    except ReplicateSafetyError as e:
-        _fail(db, j, f"🛑 Moderation отбила portrait prompt: {str(e)[:200]}")
-        return
-    except ReplicateTransientError as e:
-        log.warning("makeugc %s transient on portrait: %s", j.id, e)
-        raise
-    except ReplicateError as e:
-        _fail(db, j, f"Replicate hard fail on portrait: {str(e)[:200]}")
-        return
-    except Exception as e:
-        log.exception("makeugc %s unexpected fail on portrait", j.id)
-        _fail(db, j, f"внутренняя ошибка portrait: {str(e)[:200]}")
-        return
-
-    # --- Stage: VOICEOVER (script gen + TTS) ---
-    _mark_stage(db, j, MakeUGCStatus.VOICEOVER)
-
-    openai_key = resolve_openai_key(user.openai_api_key)
-    if not openai_key:
-        _fail(db, j, "Нет OPENAI_API_KEY (ни у юзера, ни в env) — нужен для script gen")
-        return
-    eleven_key = resolve_eleven_key(user.elevenlabs_api_key)
-    voice_id = resolve_voice_id(None)  # user-selectable voice arrives with UI
-    if not eleven_key or not voice_id:
-        _fail(db, j, "Нет ELEVENLABS_API_KEY или MAKEUGC_DEFAULT_VOICE_ID в env")
-        return
-
-    try:
-        script_text = generate_script(
-            product_name=j.product_name,
-            premium_brand=j.premium_brand,
-            premium_price_usd=float(j.premium_price_usd),
-            mimic_price_usd=float(j.mimic_price_usd),
-            persona_style=j.persona_style,
-            openai_api_key=openai_key,
-        )
-    except Exception as e:
-        log.exception("makeugc %s script-gen failed", j.id)
-        _fail(db, j, f"script-gen ошибка: {str(e)[:200]}")
-        return
-
-    j.script_text = script_text
-    db.commit()
-
-    # Quota check on the shared key — only when user hasn't supplied own.
-    using_shared_key = not user.elevenlabs_api_key
-    if using_shared_key:
-        makeugc_quota.maybe_reset_counter(db, user)
-        ok, remaining = makeugc_quota.has_budget(
-            user, chars_needed=len(script_text)
-        )
-        if not ok:
-            _fail(
-                db, j,
-                f"Лимит общего пула ElevenLabs исчерпан "
-                f"(осталось {remaining} символов до начала следующего "
-                f"месяца). Подключи свой ключ в /settings или подожди."
+    # --- Stage: PORTRAIT (skip if artifact already exists — resume safe) ---
+    if not j.portrait_key:
+        _mark_stage(db, j, MakeUGCStatus.PORTRAIT)
+        try:
+            result, cost = generate_portrait(
+                product_image_bytes=product_bytes,
+                product_content_type=product_ct,
+                persona_style=j.persona_style,
+                replicate_api_key=replicate_api_key,
+                model=MODEL_MAX,
             )
+            if isinstance(result, (bytes, bytearray)):
+                blob = bytes(result)
+            else:
+                blob = download_bytes(result, timeout=120)
+            key = (
+                f"users/{j.user_id}/makeugc/{j.id}/"
+                f"portrait-{uuid.uuid4().hex[:6]}.jpg"
+            )
+            r2.upload_bytes(key, blob, content_type="image/jpeg")
+            j.portrait_key = key
+            j.cost_usd = (j.cost_usd or Decimal("0")) + Decimal(str(cost))
+            db.commit()
+        except ReplicateSafetyError as e:
+            _fail(db, j, f"🛑 Moderation отбила portrait prompt: {str(e)[:200]}")
+            return
+        except ReplicateTransientError as e:
+            log.warning("makeugc %s transient on portrait: %s", j.id, e)
+            raise
+        except ReplicateError as e:
+            _fail(db, j, f"Replicate hard fail on portrait: {str(e)[:200]}")
+            return
+        except Exception as e:
+            log.exception("makeugc %s unexpected fail on portrait", j.id)
+            _fail(db, j, f"внутренняя ошибка portrait: {str(e)[:200]}")
             return
 
-    try:
-        audio_bytes = generate_voiceover(
-            script_text=script_text,
-            voice_id=voice_id,
-            api_key=eleven_key,
+    # --- Stage: VOICEOVER (skip if artifact already exists) ---
+    if not j.voiceover_key:
+        _mark_stage(db, j, MakeUGCStatus.VOICEOVER)
+
+        openai_key = resolve_openai_key(user.openai_api_key)
+        if not openai_key:
+            _fail(db, j, "Нет OPENAI_API_KEY (ни у юзера, ни в env) — нужен для script gen")
+            return
+        eleven_key = resolve_eleven_key(user.elevenlabs_api_key)
+        voice_id = resolve_voice_id(None)
+        if not eleven_key or not voice_id:
+            _fail(db, j, "Нет ELEVENLABS_API_KEY или MAKEUGC_DEFAULT_VOICE_ID в env")
+            return
+
+        if not j.script_text:
+            try:
+                j.script_text = generate_script(
+                    product_name=j.product_name,
+                    premium_brand=j.premium_brand,
+                    premium_price_usd=float(j.premium_price_usd),
+                    mimic_price_usd=float(j.mimic_price_usd),
+                    persona_style=j.persona_style,
+                    openai_api_key=openai_key,
+                )
+                db.commit()
+            except Exception as e:
+                log.exception("makeugc %s script-gen failed", j.id)
+                _fail(db, j, f"script-gen ошибка: {str(e)[:200]}")
+                return
+
+        script_text = j.script_text
+
+        using_shared_key = not user.elevenlabs_api_key
+        if using_shared_key:
+            makeugc_quota.maybe_reset_counter(db, user)
+            ok, remaining = makeugc_quota.has_budget(
+                user, chars_needed=len(script_text)
+            )
+            if not ok:
+                _fail(
+                    db, j,
+                    f"Лимит общего пула ElevenLabs исчерпан "
+                    f"(осталось {remaining} символов до начала следующего "
+                    f"месяца). Подключи свой ключ в /settings или подожди."
+                )
+                return
+
+        try:
+            audio_bytes = generate_voiceover(
+                script_text=script_text,
+                voice_id=voice_id,
+                api_key=eleven_key,
+            )
+        except VoiceoverError as e:
+            _fail(db, j, f"TTS ошибка: {str(e)[:200]}")
+            return
+        except Exception as e:
+            log.exception("makeugc %s tts unexpected fail", j.id)
+            _fail(db, j, f"внутренняя ошибка tts: {str(e)[:200]}")
+            return
+
+        audio_key = (
+            f"users/{j.user_id}/makeugc/{j.id}/"
+            f"voiceover-{uuid.uuid4().hex[:6]}.mp3"
         )
-    except VoiceoverError as e:
-        _fail(db, j, f"TTS ошибка: {str(e)[:200]}")
-        return
-    except Exception as e:
-        log.exception("makeugc %s tts unexpected fail", j.id)
-        _fail(db, j, f"внутренняя ошибка tts: {str(e)[:200]}")
-        return
+        r2.upload_bytes(audio_key, audio_bytes, content_type="audio/mpeg")
+        j.voiceover_key = audio_key
 
-    # Persist audio in R2 + track cost + consume quota.
-    audio_key = (
-        f"users/{j.user_id}/makeugc/{j.id}/"
-        f"voiceover-{uuid.uuid4().hex[:6]}.mp3"
-    )
-    r2.upload_bytes(audio_key, audio_bytes, content_type="audio/mpeg")
-    j.voiceover_key = audio_key
-
-    tts_cost = round(
-        len(script_text) * ELEVENLABS_USD_PER_1K_CHARS / 1000.0, 4
-    )
-    j.cost_usd = (j.cost_usd or Decimal("0")) + Decimal(str(tts_cost))
-
-    if using_shared_key:
-        makeugc_quota.consume(db, user, chars=len(script_text))
-
-    # --- Stage: LIPSYNC (Pruna p-video-avatar) ---
-    _mark_stage(db, j, MakeUGCStatus.LIPSYNC)
-
-    try:
-        # Re-read portrait + voiceover bytes from R2 — keeps the worker
-        # stateless between stages so a retry after PORTRAIT/VOICEOVER
-        # finished can resume from LIPSYNC without re-running the
-        # earlier paid steps.
-        portrait_obj = r2._client.get_object(Bucket=r2.bucket, Key=j.portrait_key)
-        portrait_blob = portrait_obj["Body"].read()
-        voice_obj = r2._client.get_object(Bucket=r2.bucket, Key=j.voiceover_key)
-        voice_blob = voice_obj["Body"].read()
-
-        lip_result, lip_cost = generate_lipsync(
-            portrait_bytes=portrait_blob,
-            portrait_ext="jpg",
-            voiceover_bytes=voice_blob,
-            voiceover_ext="mp3",
-            replicate_api_key=replicate_api_key,
+        tts_cost = round(
+            len(script_text) * ELEVENLABS_USD_PER_1K_CHARS / 1000.0, 4
         )
-        if isinstance(lip_result, (bytes, bytearray)):
-            video_blob = bytes(lip_result)
-        else:
-            video_blob = download_bytes(lip_result, timeout=300)
-    except ReplicateSafetyError as e:
-        _fail(db, j, f"🛑 Moderation отбила lipsync: {str(e)[:200]}")
-        return
-    except ReplicateTransientError as e:
-        log.warning("makeugc %s transient on lipsync: %s", j.id, e)
-        raise
-    except ReplicateError as e:
-        _fail(db, j, f"Replicate hard fail on lipsync: {str(e)[:200]}")
-        return
-    except Exception as e:
-        log.exception("makeugc %s lipsync unexpected fail", j.id)
-        _fail(db, j, f"внутренняя ошибка lipsync: {str(e)[:200]}")
-        return
+        j.cost_usd = (j.cost_usd or Decimal("0")) + Decimal(str(tts_cost))
 
-    lip_key = (
-        f"users/{j.user_id}/makeugc/{j.id}/"
-        f"lipsync-{uuid.uuid4().hex[:6]}.mp4"
-    )
-    r2.upload_bytes(lip_key, video_blob, content_type="video/mp4")
-    j.lipsync_key = lip_key
-    j.cost_usd = (j.cost_usd or Decimal("0")) + Decimal(str(lip_cost))
-    db.commit()
+        if using_shared_key:
+            makeugc_quota.consume(db, user, chars=len(script_text))
+        db.commit()
+
+    # --- Stage: LIPSYNC (skip if artifact already exists) ---
+    if not j.lipsync_key:
+        _mark_stage(db, j, MakeUGCStatus.LIPSYNC)
+
+        try:
+            portrait_obj = r2._client.get_object(Bucket=r2.bucket, Key=j.portrait_key)
+            portrait_blob = portrait_obj["Body"].read()
+            voice_obj = r2._client.get_object(Bucket=r2.bucket, Key=j.voiceover_key)
+            voice_blob = voice_obj["Body"].read()
+
+            lip_result, lip_cost = generate_lipsync(
+                portrait_bytes=portrait_blob,
+                portrait_ext="jpg",
+                voiceover_bytes=voice_blob,
+                voiceover_ext="mp3",
+                replicate_api_key=replicate_api_key,
+            )
+            if isinstance(lip_result, (bytes, bytearray)):
+                video_blob = bytes(lip_result)
+            else:
+                video_blob = download_bytes(lip_result, timeout=300)
+        except ReplicateSafetyError as e:
+            _fail(db, j, f"🛑 Moderation отбила lipsync: {str(e)[:200]}")
+            return
+        except ReplicateTransientError as e:
+            log.warning("makeugc %s transient on lipsync: %s", j.id, e)
+            raise
+        except ReplicateError as e:
+            _fail(db, j, f"Replicate hard fail on lipsync: {str(e)[:200]}")
+            return
+        except Exception as e:
+            log.exception("makeugc %s lipsync unexpected fail", j.id)
+            _fail(db, j, f"внутренняя ошибка lipsync: {str(e)[:200]}")
+            return
+
+        lip_key = (
+            f"users/{j.user_id}/makeugc/{j.id}/"
+            f"lipsync-{uuid.uuid4().hex[:6]}.mp4"
+        )
+        r2.upload_bytes(lip_key, video_blob, content_type="video/mp4")
+        j.lipsync_key = lip_key
+        j.cost_usd = (j.cost_usd or Decimal("0")) + Decimal(str(lip_cost))
+        db.commit()
 
     # --- Stage: CUTAWAY (bottle-hero auto-gen + ffmpeg insert) ---
-    _mark_stage(db, j, MakeUGCStatus.CUTAWAY)
-
     if j.broll_video_key:
-        # User uploaded their own B-roll — video-cutaway path. Lands in a
-        # follow-up PR with the Settings UI; reject here so we don't
-        # silently ignore their upload.
         _fail(
             db, j,
             "B-roll video upload путь ещё не реализован — пока auto-gen "
@@ -269,32 +264,47 @@ def process_job(db: Session, j: MakeUGCJob, user: User) -> None:
         )
         return
 
-    try:
-        bottle_result, bottle_cost = generate_bottle_hero(
-            product_image_bytes=product_bytes,
-            product_content_type=product_ct,
-            replicate_api_key=replicate_api_key,
-        )
-        if isinstance(bottle_result, (bytes, bytearray)):
-            bottle_blob = bytes(bottle_result)
-        else:
-            bottle_blob = download_bytes(bottle_result, timeout=120)
-    except ReplicateError as e:
-        _fail(db, j, f"Replicate fail on bottle-hero: {str(e)[:200]}")
-        return
-    except Exception as e:
-        log.exception("makeugc %s bottle-hero fail", j.id)
-        _fail(db, j, f"bottle-hero ошибка: {str(e)[:200]}")
-        return
+    if not j.bottle_hero_key:
+        _mark_stage(db, j, MakeUGCStatus.CUTAWAY)
+        try:
+            bottle_result, bottle_cost = generate_bottle_hero(
+                product_image_bytes=product_bytes,
+                product_content_type=product_ct,
+                replicate_api_key=replicate_api_key,
+            )
+            if isinstance(bottle_result, (bytes, bytearray)):
+                bottle_blob = bytes(bottle_result)
+            else:
+                bottle_blob = download_bytes(bottle_result, timeout=120)
+        except ReplicateError as e:
+            _fail(db, j, f"Replicate fail on bottle-hero: {str(e)[:200]}")
+            return
+        except Exception as e:
+            log.exception("makeugc %s bottle-hero fail", j.id)
+            _fail(db, j, f"bottle-hero ошибка: {str(e)[:200]}")
+            return
 
-    bottle_key = (
-        f"users/{j.user_id}/makeugc/{j.id}/"
-        f"bottle-hero-{uuid.uuid4().hex[:6]}.jpg"
-    )
-    r2.upload_bytes(bottle_key, bottle_blob, content_type="image/jpeg")
-    j.bottle_hero_key = bottle_key
-    j.cost_usd = (j.cost_usd or Decimal("0")) + Decimal(str(bottle_cost))
-    db.commit()
+        bottle_key = (
+            f"users/{j.user_id}/makeugc/{j.id}/"
+            f"bottle-hero-{uuid.uuid4().hex[:6]}.jpg"
+        )
+        r2.upload_bytes(bottle_key, bottle_blob, content_type="image/jpeg")
+        j.bottle_hero_key = bottle_key
+        j.cost_usd = (j.cost_usd or Decimal("0")) + Decimal(str(bottle_cost))
+        db.commit()
+    else:
+        _mark_stage(db, j, MakeUGCStatus.CUTAWAY)
+        bottle_obj = r2._client.get_object(
+            Bucket=r2.bucket, Key=j.bottle_hero_key
+        )
+        bottle_blob = bottle_obj["Body"].read()
+
+    # Always need lipsync bytes for ffmpeg — pull from R2 if not in scope.
+    try:
+        video_blob  # noqa: B018  — present iff we ran lipsync this tick
+    except NameError:
+        lip_obj = r2._client.get_object(Bucket=r2.bucket, Key=j.lipsync_key)
+        video_blob = lip_obj["Body"].read()
 
     # ffmpeg insert: download lipsync mp4 + bottle jpg into tmp, apply
     # image cutaway at 10..13s, upload result, then concat with hook.

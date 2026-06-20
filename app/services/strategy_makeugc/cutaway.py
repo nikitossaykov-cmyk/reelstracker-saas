@@ -96,14 +96,14 @@ def apply_image_cutaway(
         f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black,"
         f"setsar=1,fps={fps},format=yuv420p[s0]"
     )
-    # Subtle Ken-Burns slow zoom-in on the still — 4% over insert_dur.
+    # Static still — Ken-Burns dropped after Railway ffmpeg version
+    # rejected the t-dependent crop expression. 3-sec still on a
+    # bottle-hero close-up reads fine without the slow zoom.
     seg_image = (
         f"[1:v]trim=duration={insert_dur:.3f},setpts=PTS-STARTPTS,"
-        f"scale={int(width*1.10)}:{int(height*1.10)}:force_original_aspect_ratio=decrease,"
-        f"crop=w='iw/(1.0+0.04*t/{insert_dur:.3f})':"
-        f"h='ih/(1.0+0.04*t/{insert_dur:.3f})':"
-        f"x='(iw-ow)/2':y='(ih-oh)/2':exact=1,"
-        f"scale={width}:{height},setsar=1,fps={fps},format=yuv420p[s1]"
+        f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
+        f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black,"
+        f"setsar=1,fps={fps},format=yuv420p[s1]"
     )
     seg_base_post = (
         f"[0:v]trim=start={end_seconds}:end={total},setpts=PTS-STARTPTS,"

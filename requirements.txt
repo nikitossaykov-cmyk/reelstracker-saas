@@ -44,3 +44,7 @@ yt-dlp==2026.3.17
 
 # Forge Strategy E / Persona library — Replicate (PuLID-Flux, face-replace models)
 replicate==1.0.7
+
+# MakeUGC — Pillow for the multi-photo collage that gives Flux Kontext
+# several angles of the bottle as a single input image.
+Pillow==11.0.0

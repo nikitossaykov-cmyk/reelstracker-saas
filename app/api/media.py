@@ -66,6 +66,7 @@ def _verify_key_in_db(key: str, db: Session) -> bool:
                        | (MakeUGCJob.bottle_hero_key == key)
                        | (MakeUGCJob.broll_video_key == key)
                        | (MakeUGCJob.output_key == key)
+                       | cast(MakeUGCJob.product_image_keys, SAString).contains(key)
                    )
                    .first() is not None)
     return has_makeugc

@@ -94,14 +94,16 @@
   <div class="glass rounded-2xl p-6 max-w-lg w-full my-8">
     <h2 class="text-lg font-semibold mb-4">Новый рилс</h2>
 
-    <!-- Photo upload -->
-    <label class="block text-xs text-gray-400 mb-1">Фото флакона (фронт, белый фон)</label>
-    <div id="dropzone" class="dropzone rounded-lg p-6 text-center cursor-pointer mb-4">
-      <div id="dz-empty" class="text-sm text-gray-400">
-        Перетащи фото сюда или кликни. JPEG/PNG/WebP, до 8 MB.
+    <!-- Photos upload (up to 4 angles) -->
+    <label class="block text-xs text-gray-400 mb-1">
+      Фото флакона (1–4 ракурса) — чем больше, тем чётче. JPEG/PNG/WebP, до 8 MB каждое.
+    </label>
+    <div id="dropzone" class="dropzone rounded-lg p-4 text-center cursor-pointer mb-4">
+      <div id="dz-empty" class="text-sm text-gray-400 py-4">
+        Перетащи фото сюда или кликни. Можно сразу несколько (Cmd/Ctrl+Click).
       </div>
-      <img id="dz-preview" class="hidden mx-auto rounded-lg max-h-48 mb-2">
-      <input id="m-photo" type="file" accept="image/*" class="hidden">
+      <div id="dz-grid" class="hidden grid grid-cols-4 gap-2 mb-2"></div>
+      <input id="m-photos" type="file" accept="image/*" multiple class="hidden">
     </div>
 
     <!-- Brand + name -->
@@ -326,23 +328,62 @@ document.getElementById('vp-close').onclick = () => {
   document.getElementById('vp-video').src = '';
 };
 
-// --- New reel modal wiring ---
+// --- New reel modal wiring (multi-photo) ---
+const MAX_PHOTOS = 4;
 const dz = document.getElementById('dropzone');
-const photoInput = document.getElementById('m-photo');
-const preview = document.getElementById('dz-preview');
+const photoInput = document.getElementById('m-photos');
 const dzEmpty = document.getElementById('dz-empty');
+const dzGrid = document.getElementById('dz-grid');
+
+// Maintain our own File[] because <input multiple> can't easily merge across selections.
+let stagedFiles = [];
+
+function renderStaged() {
+  if (!stagedFiles.length) {
+    dzEmpty.classList.remove('hidden');
+    dzGrid.classList.add('hidden');
+    dzGrid.innerHTML = '';
+    return;
+  }
+  dzEmpty.classList.add('hidden');
+  dzGrid.classList.remove('hidden');
+  dzGrid.innerHTML = '';
+  stagedFiles.forEach((f, idx) => {
+    const cell = document.createElement('div');
+    cell.className = 'relative aspect-square rounded-lg overflow-hidden bg-black/30';
+    const img = document.createElement('img');
+    img.className = 'w-full h-full object-cover';
+    const rm = document.createElement('button');
+    rm.textContent = '×';
+    rm.className = 'absolute top-1 right-1 w-6 h-6 rounded-full bg-black/70 text-white text-xs hover:bg-red-500';
+    rm.onclick = ev => {
+      ev.stopPropagation();
+      stagedFiles.splice(idx, 1);
+      renderStaged();
+    };
+    const reader = new FileReader();
+    reader.onload = e => { img.src = e.target.result; };
+    reader.readAsDataURL(f);
+    cell.appendChild(img);
+    cell.appendChild(rm);
+    dzGrid.appendChild(cell);
+  });
+}
+
+function addFiles(list) {
+  for (const f of list) {
+    if (stagedFiles.length >= MAX_PHOTOS) break;
+    if (!f.type.startsWith('image/')) continue;
+    stagedFiles.push(f);
+  }
+  renderStaged();
+}
 
 dz.onclick = () => photoInput.click();
 photoInput.onchange = () => {
-  const f = photoInput.files[0];
-  if (!f) return;
-  const reader = new FileReader();
-  reader.onload = e => {
-    preview.src = e.target.result;
-    preview.classList.remove('hidden');
-    dzEmpty.classList.add('hidden');
-  };
-  reader.readAsDataURL(f);
+  addFiles(photoInput.files);
+  // Reset input so picking the same file twice still fires onchange
+  photoInput.value = '';
 };
 ['dragover', 'dragenter'].forEach(ev => dz.addEventListener(ev, e => {
   e.preventDefault(); dz.classList.add('drag');
@@ -351,10 +392,7 @@ photoInput.onchange = () => {
   e.preventDefault(); dz.classList.remove('drag');
 }));
 dz.addEventListener('drop', e => {
-  if (e.dataTransfer.files.length) {
-    photoInput.files = e.dataTransfer.files;
-    photoInput.dispatchEvent(new Event('change'));
-  }
+  if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
 });
 
 // Persona selection
@@ -380,19 +418,18 @@ document.getElementById('m-submit').onclick = async () => {
   const err = document.getElementById('m-error');
   err.classList.add('hidden');
 
-  const file = photoInput.files[0];
   const name = document.getElementById('m-name').value.trim();
   const brand = document.getElementById('m-brand').value.trim();
   const premPrice = document.getElementById('m-prem-price').value.trim();
   const mimicPrice = document.getElementById('m-mimic-price').value.trim();
 
-  if (!file) return showErr('Загрузи фото флакона');
+  if (!stagedFiles.length) return showErr('Загрузи хотя бы одно фото флакона');
   if (!name) return showErr('Введи название');
   if (!brand) return showErr('Введи премиум-аналог');
   if (!premPrice || !mimicPrice) return showErr('Заполни обе цены');
 
   const fd = new FormData();
-  fd.append('product_image', file);
+  for (const f of stagedFiles) fd.append('product_images', f);
   fd.append('product_name', name);
   fd.append('premium_brand', brand);
   fd.append('premium_price_rub', premPrice);
@@ -411,9 +448,9 @@ document.getElementById('m-submit').onclick = async () => {
     document.getElementById('modal').classList.add('hidden');
     document.getElementById('modal').classList.remove('flex');
     // reset form
+    stagedFiles = [];
+    renderStaged();
     photoInput.value = '';
-    preview.classList.add('hidden');
-    dzEmpty.classList.remove('hidden');
     document.getElementById('m-name').value = '';
     document.getElementById('m-brand').value = '';
     document.getElementById('m-prem-price').value = '';

@@ -34,18 +34,23 @@ ALLOWED_PRODUCT_CONTENT_TYPES = {
 }
 
 
+MAX_PRODUCT_IMAGES = 4
+
+
 def create_makeugc_job_async(
     db: Session,
     user: User,
     *,
-    product_image_bytes: bytes,
-    product_image_content_type: str,
+    product_images: list[tuple[bytes, str]],
     product_name: str,
     premium_brand: str,
     premium_price_rub: Decimal,
     mimic_price_rub: Decimal,
     persona_style: str,
 ) -> MakeUGCJob:
+    """`product_images` is a list of (bytes, content_type) — 1..4 angles
+    of the same bottle. The worker collages them into a single Flux
+    Kontext input image for sharper label/shape reconstruction."""
     product_name = (product_name or "").strip()
     premium_brand = (premium_brand or "").strip()
     if not product_name:
@@ -62,33 +67,42 @@ def create_makeugc_job_async(
     if mimic_price_rub <= 0:
         raise MakeUGCValidationError("mimic_price_rub must be > 0")
 
-    if not product_image_bytes:
-        raise MakeUGCValidationError("product image is empty")
-    if len(product_image_bytes) > MAX_PRODUCT_IMAGE_BYTES:
+    if not product_images:
+        raise MakeUGCValidationError("at least one product image required")
+    if len(product_images) > MAX_PRODUCT_IMAGES:
         raise MakeUGCValidationError(
-            f"product image too large "
-            f"(max {MAX_PRODUCT_IMAGE_BYTES // (1024 * 1024)} MB)"
-        )
-    ext = ALLOWED_PRODUCT_CONTENT_TYPES.get(product_image_content_type)
-    if not ext:
-        raise MakeUGCValidationError(
-            f"unsupported product image type: {product_image_content_type}"
+            f"too many product images (max {MAX_PRODUCT_IMAGES})"
         )
 
-    # Upload product image to R2 under a key the user owns; key is
-    # `users/<uid>/makeugc/<job_uuid_prefix>/product.<ext>` — we don't
-    # yet know the job_id (auto-increment), so use a uuid prefix in the
-    # path. Store the key on the row.
+    # Validate + collect per-image specs before any R2 upload.
+    image_specs: list[tuple[bytes, str, str]] = []  # (bytes, ext, content_type)
+    for idx, (blob, ct) in enumerate(product_images):
+        if not blob:
+            raise MakeUGCValidationError(f"image #{idx + 1} is empty")
+        if len(blob) > MAX_PRODUCT_IMAGE_BYTES:
+            raise MakeUGCValidationError(
+                f"image #{idx + 1} too large "
+                f"(max {MAX_PRODUCT_IMAGE_BYTES // (1024 * 1024)} MB)"
+            )
+        ext = ALLOWED_PRODUCT_CONTENT_TYPES.get(ct)
+        if not ext:
+            raise MakeUGCValidationError(
+                f"image #{idx + 1}: unsupported type {ct}"
+            )
+        image_specs.append((blob, ext, ct))
+
     r2 = get_r2()
     key_uuid = uuid.uuid4().hex[:12]
-    product_key = f"users/{user.id}/makeugc/{key_uuid}/product.{ext}"
-    r2.upload_bytes(
-        product_key, product_image_bytes, content_type=product_image_content_type
-    )
+    keys: list[str] = []
+    for idx, (blob, ext, ct) in enumerate(image_specs):
+        key = f"users/{user.id}/makeugc/{key_uuid}/product-{idx + 1}.{ext}"
+        r2.upload_bytes(key, blob, content_type=ct)
+        keys.append(key)
 
     job = MakeUGCJob(
         user_id=user.id,
-        product_image_key=product_key,
+        product_image_key=keys[0],  # legacy single-key column points at the first angle
+        product_image_keys=keys,
         product_name=product_name,
         premium_brand=premium_brand,
         premium_price_rub=premium_price_rub,

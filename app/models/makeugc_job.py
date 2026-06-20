@@ -18,7 +18,7 @@ from __future__ import annotations
 import enum
 
 from sqlalchemy import (
-    Column, Integer, String, Text, Numeric, DateTime, ForeignKey, Index,
+    Column, Integer, String, Text, Numeric, DateTime, ForeignKey, Index, JSON,
 )
 from sqlalchemy.orm import relationship
 
@@ -47,7 +47,12 @@ class MakeUGCJob(Base):
     )
 
     # Inputs (collected from POST /api/makeugc/jobs)
-    product_image_key = Column(Text, nullable=False)
+    # Legacy single-image key — kept for older rows but new jobs use the
+    # `product_image_keys` array below (1..4 angles, collaged by the
+    # worker before passing to Flux Kontext for sharper label/shape
+    # reconstruction).
+    product_image_key = Column(Text, nullable=True)
+    product_image_keys = Column(JSON, nullable=False, default=list)
     product_name = Column(String(128), nullable=False)
     premium_brand = Column(String(128), nullable=False)
     premium_price_rub = Column(Numeric(10, 2), nullable=False)

@@ -31,6 +31,9 @@ ALLOWED_PRODUCT_CONTENT_TYPES = {
     "image/jpg": "jpg",
     "image/png": "png",
     "image/webp": "webp",
+    "image/heic": "heic",
+    "image/heif": "heif",
+    "image/avif": "avif",
 }
 
 

@@ -26,14 +26,17 @@ COST_USD = 0.06
 
 
 BOTTLE_HERO_PROMPT = (
-    "Close-up product shot of this exact perfume bottle. The bottle "
-    "fills about 60% of the frame, vertical 9:16 composition. Soft "
-    "warm window light from the side, the bottle is held up by a "
-    "feminine hand with simple short nails, against a slightly blurred "
-    "neutral beige bedroom background. The label is clearly readable, "
-    "the glass catches gentle highlights, premium-yet-honest UGC "
-    "aesthetic. Keep the perfume bottle and its label identical to "
-    "the input image — same colors, same text, same proportions."
+    "Close-up product shot of this exact small 30 ml perfume bottle "
+    "(palm-sized, compact, fits in one hand — NOT large, NOT 100 ml). "
+    "The bottle fills about 60% of the frame, vertical 9:16 "
+    "composition. Soft warm window light from the side, the bottle is "
+    "held up by a feminine hand with simple short nails — the bottle "
+    "is clearly small relative to the hand, fingers wrap easily around "
+    "it. Slightly blurred neutral beige bedroom background. The label "
+    "is clearly readable, the glass catches gentle highlights, "
+    "premium-yet-honest UGC aesthetic. Keep the perfume bottle and its "
+    "label identical to the input image — same colors, same text, same "
+    "proportions."
 )
 
 

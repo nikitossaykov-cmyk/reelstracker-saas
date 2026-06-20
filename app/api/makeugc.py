@@ -33,8 +33,8 @@ class MakeUGCJobResponse(BaseModel):
     id: int
     product_name: str
     premium_brand: str
-    premium_price_usd: float
-    mimic_price_usd: float
+    premium_price_rub: float
+    mimic_price_rub: float
     persona_style: str
     status: str
     portrait_key: Optional[str]
@@ -55,8 +55,8 @@ class MakeUGCJobResponse(BaseModel):
             id=j.id,
             product_name=j.product_name,
             premium_brand=j.premium_brand,
-            premium_price_usd=float(j.premium_price_usd),
-            mimic_price_usd=float(j.mimic_price_usd),
+            premium_price_rub=float(j.premium_price_rub),
+            mimic_price_rub=float(j.mimic_price_rub),
             persona_style=j.persona_style,
             status=j.status,
             portrait_key=j.portrait_key,
@@ -113,17 +113,17 @@ async def create_job(
     product_image: UploadFile = File(...),
     product_name: str = Form(...),
     premium_brand: str = Form(...),
-    premium_price_usd: str = Form(...),
-    mimic_price_usd: str = Form(...),
+    premium_price_rub: str = Form(...),
+    mimic_price_rub: str = Form(...),
     persona_style: str = Form("average-girl"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     try:
-        premium_dec = Decimal(premium_price_usd)
-        mimic_dec = Decimal(mimic_price_usd)
+        premium_dec = Decimal(premium_price_rub)
+        mimic_dec = Decimal(mimic_price_rub)
     except InvalidOperation:
-        raise HTTPException(400, "premium_price_usd and mimic_price_usd must be decimals")
+        raise HTTPException(400, "premium_price_rub and mimic_price_rub must be decimals")
 
     blob = await product_image.read()
     content_type = product_image.content_type or "application/octet-stream"
@@ -136,8 +136,8 @@ async def create_job(
             product_image_content_type=content_type,
             product_name=product_name,
             premium_brand=premium_brand,
-            premium_price_usd=premium_dec,
-            mimic_price_usd=mimic_dec,
+            premium_price_rub=premium_dec,
+            mimic_price_rub=mimic_dec,
             persona_style=persona_style,
         )
     except MakeUGCValidationError as e:

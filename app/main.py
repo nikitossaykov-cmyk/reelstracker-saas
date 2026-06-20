@@ -346,6 +346,13 @@ def run_lightweight_migrations():
         "ALTER TABLE makeugc_jobs ADD COLUMN IF NOT EXISTS script_text TEXT",
         "ALTER TABLE makeugc_jobs ADD COLUMN IF NOT EXISTS bottle_hero_key TEXT",
         "ALTER TABLE makeugc_jobs ADD COLUMN IF NOT EXISTS broll_video_key TEXT",
+        # Currency switch: USD columns → RUB. Russian users enter prices
+        # in rubles; voiceover script reads them out as "X тысяч рублей".
+        # Internal cost_usd ledger is unrelated and stays in USD.
+        "ALTER TABLE makeugc_jobs RENAME COLUMN premium_price_usd TO premium_price_rub",
+        "ALTER TABLE makeugc_jobs RENAME COLUMN mimic_price_usd TO mimic_price_rub",
+        "ALTER TABLE makeugc_jobs ALTER COLUMN premium_price_rub TYPE NUMERIC(10,2)",
+        "ALTER TABLE makeugc_jobs ALTER COLUMN mimic_price_rub TYPE NUMERIC(10,2)",
     ]
     # Enum-расширения нужно делать в AUTOCOMMIT (Postgres не разрешает
     # ALTER TYPE ... ADD VALUE внутри транзакции).

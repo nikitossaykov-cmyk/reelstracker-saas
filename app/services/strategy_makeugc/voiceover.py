@@ -56,10 +56,14 @@ def generate_voiceover(
     body = {
         "text": script_text,
         "model_id": TTS_MODEL,
+        # Tuned 2026-06-20 after Nick's "интонация поживее" feedback on
+        # smoke #4: stability dropped (more variation), style cranked
+        # near max (more expressive). similarity_boost slightly down so
+        # the clone doesn't lock to the sample's calmer baseline.
         "voice_settings": {
-            "stability": 0.2,
-            "similarity_boost": 0.6,
-            "style": 0.75,
+            "stability": 0.1,
+            "similarity_boost": 0.55,
+            "style": 0.95,
             "use_speaker_boost": True,
         },
         "language_code": "ru",

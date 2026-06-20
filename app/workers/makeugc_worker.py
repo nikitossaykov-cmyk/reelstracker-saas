@@ -29,7 +29,7 @@ from app.services.replicate_client import (
     ReplicateTransientError,
 )
 from app.services.strategy_makeugc.portrait import (
-    MODEL_MAX,
+    MODEL_PRO,
     generate_portrait,
 )
 from app.services.strategy_makeugc.bottle_hero import generate_bottle_hero
@@ -106,7 +106,7 @@ def process_job(db: Session, j: MakeUGCJob, user: User) -> None:
                 product_content_type=product_ct,
                 persona_style=j.persona_style,
                 replicate_api_key=replicate_api_key,
-                model=MODEL_MAX,
+                model=MODEL_PRO,
             )
             if isinstance(result, (bytes, bytearray)):
                 blob = bytes(result)

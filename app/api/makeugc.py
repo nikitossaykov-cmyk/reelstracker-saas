@@ -40,6 +40,8 @@ class MakeUGCJobResponse(BaseModel):
     portrait_key: Optional[str]
     voiceover_key: Optional[str]
     lipsync_key: Optional[str]
+    bottle_hero_key: Optional[str]
+    broll_video_key: Optional[str]
     output_key: Optional[str]
     script_text: Optional[str]
     error_message: Optional[str]
@@ -60,6 +62,8 @@ class MakeUGCJobResponse(BaseModel):
             portrait_key=j.portrait_key,
             voiceover_key=j.voiceover_key,
             lipsync_key=j.lipsync_key,
+            bottle_hero_key=j.bottle_hero_key,
+            broll_video_key=j.broll_video_key,
             output_key=j.output_key,
             script_text=j.script_text,
             error_message=j.error_message,

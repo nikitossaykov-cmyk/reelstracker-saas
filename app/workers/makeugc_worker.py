@@ -32,6 +32,12 @@ from app.services.strategy_makeugc.portrait import (
     MODEL_MAX,
     generate_portrait,
 )
+from app.services.strategy_makeugc.bottle_hero import generate_bottle_hero
+from app.services.strategy_makeugc.concat import ConcatError, concat_parts
+from app.services.strategy_makeugc.cutaway import (
+    CutawayError,
+    apply_image_cutaway,
+)
 from app.services.strategy_makeugc.lipsync import generate_lipsync
 from app.services.strategy_makeugc.script import (
     generate_script,
@@ -247,10 +253,103 @@ def process_job(db: Session, j: MakeUGCJob, user: User) -> None:
     r2.upload_bytes(lip_key, video_blob, content_type="video/mp4")
     j.lipsync_key = lip_key
     j.cost_usd = (j.cost_usd or Decimal("0")) + Decimal(str(lip_cost))
+    db.commit()
 
-    # Cutaway / concat are next-PR scope. Mark READY so the UI can
-    # preview the talking-head mp4 (which is the most expensive and
-    # most informative artifact in the pipeline by itself).
+    # --- Stage: CUTAWAY (bottle-hero auto-gen + ffmpeg insert) ---
+    _mark_stage(db, j, MakeUGCStatus.CUTAWAY)
+
+    if j.broll_video_key:
+        # User uploaded their own B-roll — video-cutaway path. Lands in a
+        # follow-up PR with the Settings UI; reject here so we don't
+        # silently ignore their upload.
+        _fail(
+            db, j,
+            "B-roll video upload путь ещё не реализован — пока auto-gen "
+            "bottle-hero. Запусти job без broll_video_key."
+        )
+        return
+
+    try:
+        bottle_result, bottle_cost = generate_bottle_hero(
+            product_image_bytes=product_bytes,
+            product_content_type=product_ct,
+            replicate_api_key=replicate_api_key,
+        )
+        if isinstance(bottle_result, (bytes, bytearray)):
+            bottle_blob = bytes(bottle_result)
+        else:
+            bottle_blob = download_bytes(bottle_result, timeout=120)
+    except ReplicateError as e:
+        _fail(db, j, f"Replicate fail on bottle-hero: {str(e)[:200]}")
+        return
+    except Exception as e:
+        log.exception("makeugc %s bottle-hero fail", j.id)
+        _fail(db, j, f"bottle-hero ошибка: {str(e)[:200]}")
+        return
+
+    bottle_key = (
+        f"users/{j.user_id}/makeugc/{j.id}/"
+        f"bottle-hero-{uuid.uuid4().hex[:6]}.jpg"
+    )
+    r2.upload_bytes(bottle_key, bottle_blob, content_type="image/jpeg")
+    j.bottle_hero_key = bottle_key
+    j.cost_usd = (j.cost_usd or Decimal("0")) + Decimal(str(bottle_cost))
+    db.commit()
+
+    # ffmpeg insert: download lipsync mp4 + bottle jpg into tmp, apply
+    # image cutaway at 10..13s, upload result, then concat with hook.
+    import tempfile  # local import — keeps the cold-path stuff cold
+    from pathlib import Path
+
+    try:
+        with tempfile.TemporaryDirectory(prefix="makeugc_") as tmpdir:
+            tmp = Path(tmpdir)
+            lipsync_tmp = tmp / "lipsync.mp4"
+            bottle_tmp = tmp / "bottle.jpg"
+            cutaway_tmp = tmp / "cutaway.mp4"
+            final_tmp = tmp / "final.mp4"
+            hook_tmp = tmp / "hook.mp4"
+
+            lipsync_tmp.write_bytes(video_blob)
+            bottle_tmp.write_bytes(bottle_blob)
+
+            apply_image_cutaway(
+                base_video=lipsync_tmp,
+                insert_image=bottle_tmp,
+                out_path=cutaway_tmp,
+                start_seconds=10.0,
+                end_seconds=13.0,
+            )
+
+            # --- Stage: CONCAT (hook + cutaway-augmented lipsync) ---
+            _mark_stage(db, j, MakeUGCStatus.CONCAT)
+
+            hook_obj = r2._client.get_object(
+                Bucket=r2.bucket,
+                Key="system/makeugc/hooks/bald_guy_aromaguru.mp4",
+            )
+            hook_tmp.write_bytes(hook_obj["Body"].read())
+
+            concat_parts(
+                parts=[hook_tmp, cutaway_tmp],
+                out_path=final_tmp,
+            )
+
+            output_blob = final_tmp.read_bytes()
+    except (CutawayError, ConcatError) as e:
+        _fail(db, j, f"ffmpeg pipeline failed: {str(e)[:300]}")
+        return
+    except Exception as e:
+        log.exception("makeugc %s ffmpeg unexpected fail", j.id)
+        _fail(db, j, f"внутренняя ошибка concat: {str(e)[:200]}")
+        return
+
+    output_key = (
+        f"users/{j.user_id}/makeugc/{j.id}/"
+        f"final-{uuid.uuid4().hex[:6]}.mp4"
+    )
+    r2.upload_bytes(output_key, output_blob, content_type="video/mp4")
+    j.output_key = output_key
     j.status = MakeUGCStatus.READY
     j.completed_at = datetime.utcnow()
     db.commit()

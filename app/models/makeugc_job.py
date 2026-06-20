@@ -58,7 +58,14 @@ class MakeUGCJob(Base):
     portrait_key = Column(Text, nullable=True)
     voiceover_key = Column(Text, nullable=True)
     lipsync_key = Column(Text, nullable=True)
+    bottle_hero_key = Column(Text, nullable=True)
     output_key = Column(Text, nullable=True)
+
+    # Optional user-uploaded B-roll of their real bottle (5-10 sec). If
+    # null, the worker auto-generates a Flux-Kontext-PRO bottle-hero
+    # still and uses that as the cutaway. The real-video path closes the
+    # tiny-label problem (handoff §75-78).
+    broll_video_key = Column(Text, nullable=True)
 
     # The voiceover script — generated from premium_brand / prices /
     # product_name before TTS. Persisted so the user can see and (later)

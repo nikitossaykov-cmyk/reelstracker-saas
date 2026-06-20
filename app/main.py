@@ -344,6 +344,8 @@ def run_lightweight_migrations():
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS "
         "makeugc_quota_reset_at TIMESTAMP",
         "ALTER TABLE makeugc_jobs ADD COLUMN IF NOT EXISTS script_text TEXT",
+        "ALTER TABLE makeugc_jobs ADD COLUMN IF NOT EXISTS bottle_hero_key TEXT",
+        "ALTER TABLE makeugc_jobs ADD COLUMN IF NOT EXISTS broll_video_key TEXT",
     ]
     # Enum-расширения нужно делать в AUTOCOMMIT (Postgres не разрешает
     # ALTER TYPE ... ADD VALUE внутри транзакции).

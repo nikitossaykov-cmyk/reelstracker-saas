@@ -80,6 +80,32 @@ def _image_bytes_to_data_uri(blob: bytes, content_type: str = "image/jpeg") -> s
     return f"data:{content_type};base64,{base64.b64encode(blob).decode()}"
 
 
+def _extract_output(out) -> bytes | str:
+    """Replicate SDK 1.x is annoyingly polymorphic:
+      - single-output models (flux-kontext) return a FileOutput object
+        with .read() giving bytes; iterating it yields individual bytes
+        (NOT a list of URLs), which silently breaks every downstream
+        consumer that does `list(out)[0]`.
+      - multi-output models (flux-schnell) return a list of FileOutputs.
+      - some older models still return strings or lists of strings.
+
+    Return either bytes (already-downloaded image) or a URL string —
+    caller doesn't care which.
+    """
+    if isinstance(out, str):
+        return out
+    if isinstance(out, (bytes, bytearray)):
+        return bytes(out)
+    if hasattr(out, "read") and callable(out.read):
+        # FileOutput — read all bytes
+        return out.read()
+    if isinstance(out, list) and out:
+        return _extract_output(out[0])
+    raise RuntimeError(
+        f"flux-kontext returned unexpected output type: {type(out).__name__}"
+    )
+
+
 def generate_portrait(
     *,
     product_image_bytes: bytes,
@@ -87,10 +113,12 @@ def generate_portrait(
     persona_style: str,
     replicate_api_key: str,
     model: str = MODEL_MAX,
-) -> tuple[str, float]:
+) -> tuple[bytes | str, float]:
     """Run Flux Kontext with the product image as input_image.
 
-    Returns (result_url, cost_usd).
+    Returns (result, cost_usd) where result is either raw image bytes
+    (preferred path — saves one HTTP round-trip) or a URL string the
+    caller must download.
     """
     prompt = build_portrait_prompt(persona_style)
     product_uri = _image_bytes_to_data_uri(product_image_bytes, product_content_type)
@@ -106,8 +134,4 @@ def generate_portrait(
             "safety_tolerance": 6,
         },
     )
-    url = out if isinstance(out, str) else (list(out) or [None])[0]
-    if not url:
-        raise RuntimeError("flux-kontext returned empty output")
-
-    return url, COST_PER_IMAGE_USD.get(model, 0.04)
+    return _extract_output(out), COST_PER_IMAGE_USD.get(model, 0.04)

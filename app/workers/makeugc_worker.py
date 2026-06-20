@@ -90,7 +90,7 @@ def process_job(db: Session, j: MakeUGCJob, user: User) -> None:
         product_bytes = obj["Body"].read()
         product_ct = obj.get("ContentType") or "image/jpeg"
 
-        url, cost = generate_portrait(
+        result, cost = generate_portrait(
             product_image_bytes=product_bytes,
             product_content_type=product_ct,
             persona_style=j.persona_style,
@@ -98,7 +98,11 @@ def process_job(db: Session, j: MakeUGCJob, user: User) -> None:
             model=MODEL_MAX,
         )
 
-        blob = download_bytes(url, timeout=120)
+        # FileOutput already gave us bytes; otherwise it's a URL we must fetch.
+        if isinstance(result, (bytes, bytearray)):
+            blob = bytes(result)
+        else:
+            blob = download_bytes(result, timeout=120)
         key = (
             f"users/{j.user_id}/makeugc/{j.id}/"
             f"portrait-{uuid.uuid4().hex[:6]}.jpg"

@@ -338,7 +338,15 @@ const dzGrid = document.getElementById('dz-grid');
 // Maintain our own File[] because <input multiple> can't easily merge across selections.
 let stagedFiles = [];
 
+// blob: URLs we minted for previews; revoke them when staging changes
+// so the page doesn't slowly bloat memory across multiple modal opens.
+let stagedPreviewUrls = [];
+
 function renderStaged() {
+  // Revoke previous preview URLs first
+  stagedPreviewUrls.forEach(u => URL.revokeObjectURL(u));
+  stagedPreviewUrls = [];
+
   if (!stagedFiles.length) {
     dzEmpty.classList.remove('hidden');
     dzGrid.classList.add('hidden');
@@ -351,7 +359,10 @@ function renderStaged() {
   stagedFiles.forEach((f, idx) => {
     const cell = document.createElement('div');
     cell.className = 'relative aspect-square rounded-lg overflow-hidden bg-black/30';
+    const url = URL.createObjectURL(f);
+    stagedPreviewUrls.push(url);
     const img = document.createElement('img');
+    img.src = url;  // synchronous — no broken-icon flash
     img.className = 'w-full h-full object-cover';
     const rm = document.createElement('button');
     rm.textContent = '×';
@@ -361,9 +372,6 @@ function renderStaged() {
       stagedFiles.splice(idx, 1);
       renderStaged();
     };
-    const reader = new FileReader();
-    reader.onload = e => { img.src = e.target.result; };
-    reader.readAsDataURL(f);
     cell.appendChild(img);
     cell.appendChild(rm);
     dzGrid.appendChild(cell);

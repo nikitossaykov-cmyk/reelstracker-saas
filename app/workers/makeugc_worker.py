@@ -89,13 +89,34 @@ def process_job(db: Session, j: MakeUGCJob, user: User) -> None:
         return
 
     r2 = get_r2()
-    # Fetch product image once — needed by portrait stage and possibly
-    # bottle-hero stage downstream.
-    product_obj = r2._client.get_object(
-        Bucket=r2.bucket, Key=j.product_image_key
-    )
-    product_bytes = product_obj["Body"].read()
-    product_ct = product_obj.get("ContentType") or "image/jpeg"
+    # Fetch product image(s) once — needed by portrait stage and
+    # bottle-hero stage downstream. If the job has multiple angles,
+    # collage them into one image before passing to Flux Kontext;
+    # that gives the model multi-view conditioning out of an API that
+    # formally takes one reference, which materially helps with label
+    # legibility (Nick 2026-06-20 ask).
+    from app.services.strategy_makeugc.collage import build_collage
+
+    raw_keys = list(j.product_image_keys or [])
+    if not raw_keys and j.product_image_key:
+        # Legacy single-image rows from before the multi-photo schema.
+        raw_keys = [j.product_image_key]
+    if not raw_keys:
+        _fail(db, j, "У job'а нет product image — это нештатно, удали и пересоздай")
+        return
+
+    raw_blobs: list[bytes] = []
+    for k in raw_keys:
+        obj = r2._client.get_object(Bucket=r2.bucket, Key=k)
+        raw_blobs.append(obj["Body"].read())
+
+    if len(raw_blobs) == 1:
+        product_bytes = raw_blobs[0]
+        # Trust whatever R2 returned for the single-image path.
+        product_ct = "image/jpeg"
+    else:
+        product_bytes = build_collage(raw_blobs)
+        product_ct = "image/jpeg"
 
     # --- Stage: PORTRAIT (skip if artifact already exists — resume safe) ---
     if not j.portrait_key:

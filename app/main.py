@@ -353,6 +353,11 @@ def run_lightweight_migrations():
         "ALTER TABLE makeugc_jobs RENAME COLUMN mimic_price_usd TO mimic_price_rub",
         "ALTER TABLE makeugc_jobs ALTER COLUMN premium_price_rub TYPE NUMERIC(10,2)",
         "ALTER TABLE makeugc_jobs ALTER COLUMN mimic_price_rub TYPE NUMERIC(10,2)",
+        # Multi-photo: array of R2 keys (1..4 angles). product_image_key
+        # is kept nullable for backwards-compat with existing rows but
+        # new jobs write only product_image_keys.
+        "ALTER TABLE makeugc_jobs ADD COLUMN IF NOT EXISTS product_image_keys JSON NOT NULL DEFAULT '[]'::json",
+        "ALTER TABLE makeugc_jobs ALTER COLUMN product_image_key DROP NOT NULL",
     ]
     # Enum-расширения нужно делать в AUTOCOMMIT (Postgres не разрешает
     # ALTER TYPE ... ADD VALUE внутри транзакции).

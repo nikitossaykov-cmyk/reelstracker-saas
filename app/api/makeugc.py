@@ -110,7 +110,7 @@ def list_jobs(
     response_model=MakeUGCJobResponse,
 )
 async def create_job(
-    product_image: UploadFile = File(...),
+    product_images: list[UploadFile] = File(...),
     product_name: str = Form(...),
     premium_brand: str = Form(...),
     premium_price_rub: str = Form(...),
@@ -125,15 +125,16 @@ async def create_job(
     except InvalidOperation:
         raise HTTPException(400, "premium_price_rub and mimic_price_rub must be decimals")
 
-    blob = await product_image.read()
-    content_type = product_image.content_type or "application/octet-stream"
+    images: list[tuple[bytes, str]] = []
+    for f in product_images:
+        blob = await f.read()
+        images.append((blob, f.content_type or "application/octet-stream"))
 
     try:
         j = create_makeugc_job_async(
             db,
             current_user,
-            product_image_bytes=blob,
-            product_image_content_type=content_type,
+            product_images=images,
             product_name=product_name,
             premium_brand=premium_brand,
             premium_price_rub=premium_dec,

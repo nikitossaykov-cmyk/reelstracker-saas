@@ -63,6 +63,8 @@ def _verify_key_in_db(key: str, db: Session) -> bool:
                        | (MakeUGCJob.portrait_key == key)
                        | (MakeUGCJob.voiceover_key == key)
                        | (MakeUGCJob.lipsync_key == key)
+                       | (MakeUGCJob.bottle_hero_key == key)
+                       | (MakeUGCJob.broll_video_key == key)
                        | (MakeUGCJob.output_key == key)
                    )
                    .first() is not None)

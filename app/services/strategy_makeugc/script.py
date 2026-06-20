@@ -21,22 +21,99 @@ import urllib.request
 SCRIPT_MODEL = "gpt-4o-mini"
 
 
+_UNITS_WORDS = {
+    1: "один", 2: "два", 3: "три", 4: "четыре", 5: "пять",
+    6: "шесть", 7: "семь", 8: "восемь", 9: "девять", 10: "десять",
+    11: "одиннадцать", 12: "двенадцать", 13: "тринадцать",
+    14: "четырнадцать", 15: "пятнадцать", 16: "шестнадцать",
+    17: "семнадцать", 18: "восемнадцать", 19: "девятнадцать",
+}
+_TENS_WORDS = {
+    20: "двадцать", 30: "тридцать", 40: "сорок", 50: "пятьдесят",
+    60: "шестьдесят", 70: "семьдесят", 80: "восемьдесят", 90: "девяносто",
+}
+_HUNDREDS_WORDS = {
+    100: "сто", 200: "двести", 300: "триста", 400: "четыреста",
+    500: "пятьсот", 600: "шестьсот", 700: "семьсот", 800: "восемьсот",
+    900: "девятьсот",
+}
+
+
+def _int_in_words(n: int) -> str:
+    if n <= 0:
+        return "ноль"
+    if n in _UNITS_WORDS:
+        return _UNITS_WORDS[n]
+    if n in _TENS_WORDS:
+        return _TENS_WORDS[n]
+    if n in _HUNDREDS_WORDS:
+        return _HUNDREDS_WORDS[n]
+    if n < 100:
+        # 21..99 (excluding 30/40/50/...)
+        tens = (n // 10) * 10
+        units = n % 10
+        return f"{_TENS_WORDS[tens]} {_UNITS_WORDS[units]}"
+    if n < 1000:
+        # 101..999
+        hund = (n // 100) * 100
+        rest = n % 100
+        return f"{_HUNDREDS_WORDS[hund]} {_int_in_words(rest)}".strip()
+    # Fallback: leave as digits if outside what the persona would say
+    # at conversational speed (rare for the prices Nick targets).
+    return str(n)
+
+
+def _thousands_suffix(n: int) -> str:
+    """Russian "тысяча/тысячи/тысяч" pluralisation."""
+    last_two = n % 100
+    last = n % 10
+    if 11 <= last_two <= 14:
+        return "тысяч"
+    if last == 1:
+        return "тысяча"
+    if 2 <= last <= 4:
+        return "тысячи"
+    return "тысяч"
+
+
 def _format_rub(amount: float) -> str:
-    """Render rubles in the natural Russian way the persona would say
-    out loud — not "44160 рублей" but "сорок четыре тысячи" / "тысячу".
-    Keeps thousands/hundreds; rounds aggressively (people don't say
-    'четыре тысячи триста двенадцать рублей' in a 24-sec reel).
+    """Render rubles ENTIRELY IN WORDS so ElevenLabs reads them
+    distinctly. Numeric "50" was getting mumbled into "пьдесят"; spell
+    "пятьдесят тысяч рублей" out and the model reads it cleanly.
     """
-    if amount < 1000:
-        return f"{int(round(amount))} рублей"
-    if amount < 10_000:
-        whole = int(round(amount / 100)) * 100
-        return f"{whole} рублей"
-    if amount < 100_000:
-        whole = int(round(amount / 1000))
-        return f"{whole} тысяч рублей"
-    whole = int(round(amount / 1000))
-    return f"{whole} тысяч рублей"
+    n = int(round(amount))
+    if n < 1000:
+        return f"{_int_in_words(n)} рублей"
+    thousands = n // 1000
+    remainder = n % 1000
+
+    if thousands == 1 and remainder == 0:
+        return "тысяча рублей"
+    thousands_word = _int_in_words(thousands)
+    # Russian quirk: "одна тысяча", "две тысячи" — adjust the unit for
+    # 1/2 when used as a numerative ("один" -> "одна", "два" -> "две").
+    if thousands % 10 == 1 and thousands % 100 != 11:
+        thousands_word = thousands_word.replace("один", "одна") \
+            if thousands_word.endswith("один") else thousands_word
+    elif thousands % 10 == 2 and thousands % 100 != 12:
+        thousands_word = thousands_word.replace("два", "две") \
+            if thousands_word.endswith("два") else thousands_word
+
+    base = f"{thousands_word} {_thousands_suffix(thousands)}"
+    if remainder == 0:
+        return f"{base} рублей"
+    return f"{base} {_int_in_words(remainder)} рублей"
+
+
+def _clean_brand(brand: str) -> str:
+    """Strip numeric model suffixes from brand names. "Baccarat Rouge
+    540" → "Baccarat Rouge"; the persona transliterates to "Бакара руж"
+    at script-gen time and the digit suffix would otherwise read as
+    "пятьсот сорок" which sounds like product catalog talk.
+    """
+    parts = brand.strip().split()
+    cleaned = [p for p in parts if not any(ch.isdigit() for ch in p)]
+    return " ".join(cleaned).strip() or brand.strip()
 
 
 def _build_prompt(
@@ -70,6 +147,7 @@ def _build_prompt(
 
     premium_price_str = _format_rub(premium_price_rub)
     mimic_price_str = _format_rub(mimic_price_rub)
+    brand_clean = _clean_brand(premium_brand)
 
     return (
         "Напиши УСТНЫЙ скрипт для 24-секундного UGC-рилса про "
@@ -77,7 +155,7 @@ def _build_prompt(
         "не реклама. Девочка говорит подруге как с подругой.\n\n"
         f"Тон: {style_voice}. На русском.\n\n"
         f"Продукт: {product_name}\n"
-        f"Дюп на: {premium_brand} (оригинал стоит {premium_price_str})\n"
+        f"Дюп на: {brand_clean} (оригинал стоит {premium_price_str})\n"
         f"Наша цена: {mimic_price_str} "
         f"(в {ratio:.0f} раз дешевле)\n\n"
         "Структура (не пиши заголовки — только сам текст подряд, без "
@@ -85,7 +163,7 @@ def _build_prompt(
         "1) Хук-завлекалка БЕЗ слова «посмотрите»: что-нибудь типа "
         "«слушай», «знаешь что», «прикинь», «ну ты не поверишь» "
         "(2-3 сек)\n"
-        f"2) Сравнение: «вместо {premium_price_str} за {premium_brand} "
+        f"2) Сравнение: «вместо {premium_price_str} за {brand_clean} "
         f"взяла за {mimic_price_str}». Дальше — впечатление от "
         "запаха простыми словами (как пахнет — сладко, тепло, свежо), "
         "8-10 сек\n"
@@ -104,9 +182,13 @@ def _build_prompt(
         "— НЕ «вау», «потрясающе», «невероятно», «представьте». "
         "Можно простые «ой», «прикинь», «слушай», «реально», «короче».\n"
         "— Обращайся на «ты», не «вы».\n"
-        "— Цены ТОЛЬКО в рублях, ТОЛЬКО как написано выше "
+        "— Цены ТОЛЬКО в рублях, ТОЛЬКО ПРОПИСЬЮ как написано выше "
         f"({premium_price_str}, {mimic_price_str}). НЕ долларах, НЕ "
-        "цифрами «44160».\n"
+        "цифрами «50000» или «50 тысяч» — только полные слова.\n"
+        "— Бренд произноси по-русски как звучит: "
+        f"«{brand_clean}» → транслитерируй («Baccarat Rouge» → "
+        "«Бакара руж», «Tom Ford» → «Том Форд»). Номера моделей "
+        "(540, 31 и т.п.) НЕ читай — они уже убраны.\n"
         "— ~55-70 слов всего.\n"
         "— Живые короткие фразы, восклицания, эмоция.\n\n"
         "Выведи ТОЛЬКО текст скрипта одним блоком, без кавычек, без "

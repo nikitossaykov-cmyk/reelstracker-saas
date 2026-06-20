@@ -596,6 +596,11 @@ async def settings_page_redirect():
     return FileResponse("static/settings.html")
 
 
+@app.get("/makeugc")
+async def makeugc_page():
+    return FileResponse("static/makeugc.html")
+
+
 @app.get("/personas")
 async def personas_page():
     return FileResponse("static/personas.html")

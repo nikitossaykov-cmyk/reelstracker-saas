@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MakeUGC — Reelstracker</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { background: radial-gradient(circle at 30% 20%, #1a0a2e 0%, #0a0a0a 60%); color: #e5e5e5; font-family: -apple-system, BlinkMacSystemFont, sans-serif; min-height: 100vh; }
+  .glass { background: rgba(255,255,255,0.04); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.08); }
+  .btn-magic { background: linear-gradient(135deg, #7c3aed 0%, #ec4899 50%, #f59e0b 100%); box-shadow: 0 4px 30px rgba(168, 85, 247, 0.4); }
+  .btn-magic:hover { transform: translateY(-1px); box-shadow: 0 6px 40px rgba(168, 85, 247, 0.6); }
+  .btn-magic:disabled { opacity: 0.5; cursor: not-allowed; }
+  .modal { background: rgba(0,0,0,0.85); }
+  .persona-card { transition: all .15s ease; }
+  .persona-card:hover { transform: translateY(-2px); border-color: rgba(255,255,255,0.25); }
+  .persona-card.selected { border-color: #ec4899; background: rgba(236, 72, 153, 0.08); }
+  .step-num { background: linear-gradient(135deg, #7c3aed, #ec4899); width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; font-weight: 600; font-size: 14px; }
+  .dropzone { border: 2px dashed rgba(255,255,255,0.2); transition: all .15s ease; }
+  .dropzone.drag { border-color: #ec4899; background: rgba(236, 72, 153, 0.05); }
+  .pulse { animation: pulse 1.5s ease-in-out infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+</style>
+</head>
+<body>
+<header class="max-w-5xl mx-auto p-4 flex justify-between items-center">
+  <h1 class="text-xl font-semibold flex items-center gap-2">
+    <span class="text-2xl">🎬</span> MakeUGC
+  </h1>
+  <nav class="text-sm space-x-3 text-gray-300">
+    <a href="/forge" class="hover:text-white">🪄 Forge</a>
+    <a href="/personas" class="hover:text-white">👤 Persona</a>
+    <a href="/tracker.html" class="hover:text-white">📊 Tracker</a>
+    <a href="/settings" class="hover:text-white">🔑 Ключи</a>
+    <button id="logout-btn" class="hover:text-white">Выйти</button>
+  </nav>
+</header>
+
+<main class="max-w-5xl mx-auto p-4">
+
+  <!-- Hero / pitch -->
+  <div class="glass rounded-2xl p-6 mb-6">
+    <div class="flex items-center justify-between flex-wrap gap-4">
+      <div class="max-w-xl">
+        <h2 class="text-2xl font-semibold mb-2">UGC-рилсы для парфюм-дюпов</h2>
+        <p class="text-sm text-gray-400">
+          Загрузи фото флакона + название премиум-аналога. На выходе — 27-секундный
+          рилс с AI-персонажем, твоим клонированным голосом и сборкой по формуле виральников. <strong class="text-white">~$1 за рилс</strong>, готово за 2 минуты.
+        </p>
+      </div>
+      <button id="new-reel-btn" class="btn-magic px-5 py-3 rounded-lg text-sm font-semibold">
+        + Новый рилс
+      </button>
+    </div>
+
+    <!-- 3 steps -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-6">
+      <div class="flex items-center gap-3 text-sm">
+        <span class="step-num">1</span>
+        <div>
+          <div class="text-white">Загрузка</div>
+          <div class="text-xs text-gray-400">фото флакона + цены</div>
+        </div>
+      </div>
+      <div class="flex items-center gap-3 text-sm">
+        <span class="step-num">2</span>
+        <div>
+          <div class="text-white">Персона + голос</div>
+          <div class="text-xs text-gray-400">Flux Kontext + ElevenLabs</div>
+        </div>
+      </div>
+      <div class="flex items-center gap-3 text-sm">
+        <span class="step-num">3</span>
+        <div>
+          <div class="text-white">Сборка</div>
+          <div class="text-xs text-gray-400">hook + lipsync + cutaway</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Empty state -->
+  <div id="empty" class="hidden glass rounded-2xl p-8 text-center text-gray-400 text-sm">
+    Пока ни одного рилса. Нажми <strong class="text-white">+ Новый рилс</strong> —
+    загрузи фото флакона, заполни форму, получи готовый mp4 через 2 минуты.
+  </div>
+
+  <!-- Reels grid -->
+  <div id="grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+</main>
+
+<!-- New reel modal -->
+<div id="modal" class="modal fixed inset-0 hidden items-center justify-center p-4 z-50 overflow-y-auto">
+  <div class="glass rounded-2xl p-6 max-w-lg w-full my-8">
+    <h2 class="text-lg font-semibold mb-4">Новый рилс</h2>
+
+    <!-- Photo upload -->
+    <label class="block text-xs text-gray-400 mb-1">Фото флакона (фронт, белый фон)</label>
+    <div id="dropzone" class="dropzone rounded-lg p-6 text-center cursor-pointer mb-4">
+      <div id="dz-empty" class="text-sm text-gray-400">
+        Перетащи фото сюда или кликни. JPEG/PNG/WebP, до 8 MB.
+      </div>
+      <img id="dz-preview" class="hidden mx-auto rounded-lg max-h-48 mb-2">
+      <input id="m-photo" type="file" accept="image/*" class="hidden">
+    </div>
+
+    <!-- Brand + name -->
+    <div class="grid grid-cols-2 gap-3 mb-3">
+      <div>
+        <label class="block text-xs text-gray-400 mb-1">Название твоего</label>
+        <input id="m-name" maxlength="128" placeholder="MIMIC BR-540"
+               class="w-full bg-black/40 rounded-lg px-3 py-2 border border-white/10 text-sm">
+      </div>
+      <div>
+        <label class="block text-xs text-gray-400 mb-1">Премиум-аналог</label>
+        <input id="m-brand" maxlength="128" placeholder="Baccarat Rouge 540"
+               class="w-full bg-black/40 rounded-lg px-3 py-2 border border-white/10 text-sm">
+      </div>
+    </div>
+
+    <!-- Prices in rub -->
+    <div class="grid grid-cols-2 gap-3 mb-4">
+      <div>
+        <label class="block text-xs text-gray-400 mb-1">Цена премиума (₽)</label>
+        <input id="m-prem-price" type="number" min="0" placeholder="50000"
+               class="w-full bg-black/40 rounded-lg px-3 py-2 border border-white/10 text-sm">
+      </div>
+      <div>
+        <label class="block text-xs text-gray-400 mb-1">Твоя цена (₽)</label>
+        <input id="m-mimic-price" type="number" min="0" placeholder="1000"
+               class="w-full bg-black/40 rounded-lg px-3 py-2 border border-white/10 text-sm">
+      </div>
+    </div>
+
+    <!-- Persona style -->
+    <label class="block text-xs text-gray-400 mb-2">Персона</label>
+    <div class="grid grid-cols-2 gap-2 mb-4">
+      <div class="persona-card glass rounded-lg p-3 cursor-pointer selected" data-style="average-girl">
+        <div class="text-2xl mb-1">👩</div>
+        <div class="text-sm">Обычная девочка</div>
+        <div class="text-xs text-gray-400">23-27 лет, без макияжа</div>
+      </div>
+      <div class="persona-card glass rounded-lg p-3 cursor-pointer" data-style="glam-blonde">
+        <div class="text-2xl mb-1">💁‍♀️</div>
+        <div class="text-sm">Glam-блондинка</div>
+        <div class="text-xs text-gray-400">26-30, блогерка</div>
+      </div>
+      <div class="persona-card glass rounded-lg p-3 cursor-pointer" data-style="brunette-glasses">
+        <div class="text-2xl mb-1">🤓</div>
+        <div class="text-sm">Брюнетка в очках</div>
+        <div class="text-xs text-gray-400">28-32, ревьюер</div>
+      </div>
+      <div class="persona-card glass rounded-lg p-3 cursor-pointer" data-style="older-tester">
+        <div class="text-2xl mb-1">👩‍🦱</div>
+        <div class="text-sm">Взрослая</div>
+        <div class="text-xs text-gray-400">38-44, тёплая</div>
+      </div>
+    </div>
+
+    <div id="m-error" class="hidden text-red-300 text-sm mb-3"></div>
+
+    <div class="flex justify-end gap-2">
+      <button id="m-cancel" class="text-gray-400 hover:text-white px-3 py-2">Отмена</button>
+      <button id="m-submit" class="btn-magic px-4 py-2 rounded-lg text-sm font-semibold">
+        Сгенерировать (~$1)
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Video preview modal -->
+<div id="video-modal" class="modal fixed inset-0 hidden items-center justify-center p-4 z-50">
+  <div class="glass rounded-2xl p-4 max-w-md w-full">
+    <video id="vp-video" controls autoplay class="w-full rounded-lg mb-3 aspect-[9/16] bg-black"></video>
+    <div id="vp-script" class="text-xs text-gray-400 mb-3 max-h-24 overflow-y-auto"></div>
+    <div class="flex justify-between items-center text-xs text-gray-400">
+      <a id="vp-download" href="#" download class="hover:text-white">⬇ Скачать mp4</a>
+      <button id="vp-close" class="hover:text-white">Закрыть</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let ACCESS = localStorage.getItem('access_token');
+if (!ACCESS) { location.href = '/login.html'; }
+function hdr() { return { 'Authorization': 'Bearer ' + ACCESS }; }
+
+async function tryRefresh() {
+  const rt = localStorage.getItem('refresh_token');
+  if (!rt) return false;
+  try {
+    const r = await fetch('/api/auth/refresh', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: rt }),
+    });
+    if (!r.ok) return false;
+    const d = await r.json();
+    if (d.access_token) {
+      ACCESS = d.access_token;
+      localStorage.setItem('access_token', d.access_token);
+      if (d.refresh_token) localStorage.setItem('refresh_token', d.refresh_token);
+      return true;
+    }
+  } catch (e) { console.error('refresh', e); }
+  return false;
+}
+
+async function authFetch(url, opts = {}) {
+  opts.headers = { ...(opts.headers || {}), ...hdr() };
+  let r = await fetch(url, opts);
+  if (r.status === 401) {
+    if (await tryRefresh()) {
+      opts.headers = { ...(opts.headers || {}), ...hdr() };
+      r = await fetch(url, opts);
+    } else {
+      localStorage.clear(); location.href = '/login.html';
+    }
+  }
+  return r;
+}
+
+document.getElementById('logout-btn').onclick = () => {
+  localStorage.clear(); location.href = '/login.html';
+};
+
+const STATUS_LABELS = {
+  pending:   { text: 'В очереди',          pct: 5  },
+  portrait:  { text: 'Генерю персону',     pct: 20 },
+  voiceover: { text: 'Записываю голос',    pct: 40 },
+  lipsync:   { text: 'Синхронизирую губы', pct: 70 },
+  cutaway:   { text: 'Bottle-hero',        pct: 85 },
+  concat:    { text: 'Сборка',             pct: 95 },
+  ready:     { text: 'Готов',              pct: 100},
+  failed:    { text: 'Ошибка',             pct: 0  },
+};
+
+function cardHtml(j) {
+  const s = STATUS_LABELS[j.status] || { text: j.status, pct: 50 };
+  const isReady = j.status === 'ready';
+  const isFailed = j.status === 'failed';
+  const thumb = j.portrait_key
+    ? `<img src="/api/media?key=${encodeURIComponent(j.portrait_key)}" class="rounded-lg w-full aspect-[9/16] object-cover">`
+    : `<div class="rounded-lg w-full aspect-[9/16] bg-black/40 flex items-center justify-center text-gray-500 text-sm">⏳</div>`;
+
+  let overlay = '';
+  if (isReady) {
+    overlay = `<button data-action="play" data-id="${j.id}" class="absolute inset-0 flex items-center justify-center bg-black/30 hover:bg-black/40 rounded-lg">
+      <span class="text-5xl">▶️</span>
+    </button>`;
+  } else if (!isFailed) {
+    overlay = `<div class="absolute inset-x-0 bottom-0 bg-black/70 rounded-b-lg p-2">
+      <div class="text-xs mb-1 pulse">${s.text}…</div>
+      <div class="h-1 bg-white/10 rounded">
+        <div class="h-1 rounded" style="width:${s.pct}%; background: linear-gradient(90deg, #7c3aed, #ec4899);"></div>
+      </div>
+    </div>`;
+  }
+
+  const footer = isFailed
+    ? `<div class="text-red-300 text-xs mt-2 break-words">${escapeHtml(j.error_message || 'Ошибка')}</div>`
+    : `<div class="flex justify-between items-center text-xs text-gray-400 mt-2">
+        <span>${escapeHtml(j.product_name)}</span>
+        <span>$${j.cost_usd.toFixed(2)}</span>
+      </div>`;
+
+  return `<div class="glass rounded-xl p-3">
+    <div class="relative">${thumb}${overlay}</div>
+    ${footer}
+  </div>`;
+}
+
+function escapeHtml(s) {
+  return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+let pollTimer = null;
+let lastItems = [];
+
+async function refresh() {
+  const r = await authFetch('/api/makeugc/jobs/');
+  if (!r.ok) {
+    document.getElementById('grid').innerHTML = `<div class="text-red-300 col-span-3">Ошибка: ${escapeHtml(await r.text())}</div>`;
+    return;
+  }
+  const data = await r.json();
+  lastItems = data.items;
+  const grid = document.getElementById('grid');
+  const empty = document.getElementById('empty');
+
+  if (!data.items.length) {
+    grid.innerHTML = '';
+    empty.classList.remove('hidden');
+  } else {
+    empty.classList.add('hidden');
+    grid.innerHTML = data.items.map(cardHtml).join('');
+    grid.querySelectorAll('[data-action="play"]').forEach(btn => {
+      btn.onclick = () => playJob(parseInt(btn.dataset.id, 10));
+    });
+  }
+
+  // poll while any job is mid-pipeline
+  const anyActive = data.items.some(
+    j => j.status !== 'ready' && j.status !== 'failed'
+  );
+  if (anyActive && !pollTimer) {
+    pollTimer = setInterval(refresh, 5000);
+  } else if (!anyActive && pollTimer) {
+    clearInterval(pollTimer); pollTimer = null;
+  }
+}
+
+function playJob(id) {
+  const j = lastItems.find(x => x.id === id);
+  if (!j || !j.output_key) return;
+  const url = '/api/media?key=' + encodeURIComponent(j.output_key);
+  document.getElementById('vp-video').src = url;
+  document.getElementById('vp-download').href = url;
+  document.getElementById('vp-script').textContent = j.script_text || '';
+  document.getElementById('video-modal').classList.remove('hidden');
+  document.getElementById('video-modal').classList.add('flex');
+}
+document.getElementById('vp-close').onclick = () => {
+  const m = document.getElementById('video-modal');
+  m.classList.add('hidden'); m.classList.remove('flex');
+  document.getElementById('vp-video').pause();
+  document.getElementById('vp-video').src = '';
+};
+
+// --- New reel modal wiring ---
+const dz = document.getElementById('dropzone');
+const photoInput = document.getElementById('m-photo');
+const preview = document.getElementById('dz-preview');
+const dzEmpty = document.getElementById('dz-empty');
+
+dz.onclick = () => photoInput.click();
+photoInput.onchange = () => {
+  const f = photoInput.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    preview.src = e.target.result;
+    preview.classList.remove('hidden');
+    dzEmpty.classList.add('hidden');
+  };
+  reader.readAsDataURL(f);
+};
+['dragover', 'dragenter'].forEach(ev => dz.addEventListener(ev, e => {
+  e.preventDefault(); dz.classList.add('drag');
+}));
+['dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, e => {
+  e.preventDefault(); dz.classList.remove('drag');
+}));
+dz.addEventListener('drop', e => {
+  if (e.dataTransfer.files.length) {
+    photoInput.files = e.dataTransfer.files;
+    photoInput.dispatchEvent(new Event('change'));
+  }
+});
+
+// Persona selection
+let selectedStyle = 'average-girl';
+document.querySelectorAll('.persona-card').forEach(c => {
+  c.onclick = () => {
+    document.querySelectorAll('.persona-card').forEach(x => x.classList.remove('selected'));
+    c.classList.add('selected');
+    selectedStyle = c.dataset.style;
+  };
+});
+
+document.getElementById('new-reel-btn').onclick = () => {
+  document.getElementById('modal').classList.remove('hidden');
+  document.getElementById('modal').classList.add('flex');
+};
+document.getElementById('m-cancel').onclick = () => {
+  document.getElementById('modal').classList.add('hidden');
+  document.getElementById('modal').classList.remove('flex');
+};
+
+document.getElementById('m-submit').onclick = async () => {
+  const err = document.getElementById('m-error');
+  err.classList.add('hidden');
+
+  const file = photoInput.files[0];
+  const name = document.getElementById('m-name').value.trim();
+  const brand = document.getElementById('m-brand').value.trim();
+  const premPrice = document.getElementById('m-prem-price').value.trim();
+  const mimicPrice = document.getElementById('m-mimic-price').value.trim();
+
+  if (!file) return showErr('Загрузи фото флакона');
+  if (!name) return showErr('Введи название');
+  if (!brand) return showErr('Введи премиум-аналог');
+  if (!premPrice || !mimicPrice) return showErr('Заполни обе цены');
+
+  const fd = new FormData();
+  fd.append('product_image', file);
+  fd.append('product_name', name);
+  fd.append('premium_brand', brand);
+  fd.append('premium_price_rub', premPrice);
+  fd.append('mimic_price_rub', mimicPrice);
+  fd.append('persona_style', selectedStyle);
+
+  document.getElementById('m-submit').disabled = true;
+  document.getElementById('m-submit').textContent = 'Создаю…';
+
+  try {
+    const r = await authFetch('/api/makeugc/jobs/', { method: 'POST', body: fd });
+    if (!r.ok) {
+      const t = await r.text();
+      return showErr('Ошибка: ' + t);
+    }
+    document.getElementById('modal').classList.add('hidden');
+    document.getElementById('modal').classList.remove('flex');
+    // reset form
+    photoInput.value = '';
+    preview.classList.add('hidden');
+    dzEmpty.classList.remove('hidden');
+    document.getElementById('m-name').value = '';
+    document.getElementById('m-brand').value = '';
+    document.getElementById('m-prem-price').value = '';
+    document.getElementById('m-mimic-price').value = '';
+    refresh();
+  } catch (e) {
+    showErr('Сетевая ошибка: ' + e.message);
+  } finally {
+    document.getElementById('m-submit').disabled = false;
+    document.getElementById('m-submit').textContent = 'Сгенерировать (~$1)';
+  }
+
+  function showErr(msg) {
+    err.textContent = msg;
+    err.classList.remove('hidden');
+    document.getElementById('m-submit').disabled = false;
+    document.getElementById('m-submit').textContent = 'Сгенерировать (~$1)';
+  }
+};
+
+refresh();
+</script>
+</body>
+</html>

@@ -56,14 +56,17 @@ def generate_voiceover(
     body = {
         "text": script_text,
         "model_id": TTS_MODEL,
-        # Tuned 2026-06-20 after Nick's "интонация поживее" feedback on
-        # smoke #4: stability dropped (more variation), style cranked
-        # near max (more expressive). similarity_boost slightly down so
-        # the clone doesn't lock to the sample's calmer baseline.
+        # Tuned 2026-06-20 round 2 — at style=0.95 the model drifted
+        # into Chinese mid-sentence on v6 (a known eleven_multilingual
+        # quirk when style is near max + foreign tokens like the brand
+        # transliteration "Бакара руж" sit next to russian numerals).
+        # Back off to style=0.65 + stability=0.3 — still much livelier
+        # than v4's calm 0.2/0.75 baseline, but anchored enough to
+        # stay in Russian end-to-end.
         "voice_settings": {
-            "stability": 0.1,
+            "stability": 0.3,
             "similarity_boost": 0.55,
-            "style": 0.95,
+            "style": 0.65,
             "use_speaker_boost": True,
         },
         "language_code": "ru",

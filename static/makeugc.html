@@ -378,18 +378,59 @@ function renderStaged() {
   });
 }
 
-function addFiles(list) {
-  for (const f of list) {
-    if (stagedFiles.length >= MAX_PHOTOS) break;
-    if (!f.type.startsWith('image/')) continue;
-    stagedFiles.push(f);
+// Client-side downscale: iPhone shots are routinely 12 MP / 5+ MB and
+// 4 of them together choke Railway's edge before our handler ever sees
+// the body. Resize to 1600 px on the long side, JPEG 0.9. That brings
+// 4 photos down to ~1-2 MB total — comfortably under any proxy limit
+// and small enough that "Failed to fetch" can't happen on a flaky
+// mobile connection either.
+const MAX_DIM = 1600;
+const JPEG_QUALITY = 0.9;
+
+async function shrinkImage(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => {
+      const i = new Image();
+      i.onload = () => res(i);
+      i.onerror = rej;
+      i.src = url;
+    });
+    const scale = Math.min(1, MAX_DIM / Math.max(img.width, img.height));
+    const w = Math.round(img.width * scale);
+    const h = Math.round(img.height * scale);
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+    const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', JPEG_QUALITY));
+    if (!blob) return file;  // safari quirk → fall back to original
+    return new File([blob], (file.name || 'photo').replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' });
+  } catch (e) {
+    // HEIC etc that <img> can't decode → let server side handle; or
+    // gracefully fall back to the original file. Browser-side HEIC
+    // support is uneven; the server accepts HEIC too now.
+    console.warn('shrinkImage fallback', file.name, e);
+    return file;
+  } finally {
+    URL.revokeObjectURL(url);
   }
+}
+
+async function addFiles(list) {
+  const toAdd = [];
+  for (const f of list) {
+    if (stagedFiles.length + toAdd.length >= MAX_PHOTOS) break;
+    if (!f.type.startsWith('image/')) continue;
+    toAdd.push(f);
+  }
+  const shrunk = await Promise.all(toAdd.map(shrinkImage));
+  stagedFiles.push(...shrunk);
   renderStaged();
 }
 
 dz.onclick = () => photoInput.click();
-photoInput.onchange = () => {
-  addFiles(photoInput.files);
+photoInput.onchange = async () => {
+  await addFiles(photoInput.files);
   // Reset input so picking the same file twice still fires onchange
   photoInput.value = '';
 };
@@ -399,8 +440,8 @@ photoInput.onchange = () => {
 ['dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, e => {
   e.preventDefault(); dz.classList.remove('drag');
 }));
-dz.addEventListener('drop', e => {
-  if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+dz.addEventListener('drop', async e => {
+  if (e.dataTransfer.files.length) await addFiles(e.dataTransfer.files);
 });
 
 // Persona selection

@@ -377,6 +377,14 @@ def run_lightweight_migrations():
                 conn.execute(text(sql))
                 conn.commit()
             except Exception as e:
+                # Must rollback or every subsequent migration in this
+                # connection fails with InFailedSqlTransaction. Bit me
+                # 2026-06-20 — the PRODUCT_IMAGE_KEYS column quietly
+                # never got created because a prior ALTER raised.
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
                 logger.warning(f"Миграция '{sql[:60]}...' не прошла: {e}")
     with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
         for sql in enum_extensions:

@@ -32,6 +32,7 @@ from app.services.strategy_makeugc.portrait import (
     MODEL_MAX,
     generate_portrait,
 )
+from app.services.strategy_makeugc.lipsync import generate_lipsync
 from app.services.strategy_makeugc.script import (
     generate_script,
     resolve_openai_key,
@@ -201,8 +202,55 @@ def process_job(db: Session, j: MakeUGCJob, user: User) -> None:
     if using_shared_key:
         makeugc_quota.consume(db, user, chars=len(script_text))
 
-    # Lipsync / cutaway / concat are next-PR scope. Mark READY so the
-    # UI can preview portrait + voiceover.
+    # --- Stage: LIPSYNC (Pruna p-video-avatar) ---
+    _mark_stage(db, j, MakeUGCStatus.LIPSYNC)
+
+    try:
+        # Re-read portrait + voiceover bytes from R2 — keeps the worker
+        # stateless between stages so a retry after PORTRAIT/VOICEOVER
+        # finished can resume from LIPSYNC without re-running the
+        # earlier paid steps.
+        portrait_obj = r2._client.get_object(Bucket=r2.bucket, Key=j.portrait_key)
+        portrait_blob = portrait_obj["Body"].read()
+        voice_obj = r2._client.get_object(Bucket=r2.bucket, Key=j.voiceover_key)
+        voice_blob = voice_obj["Body"].read()
+
+        lip_result, lip_cost = generate_lipsync(
+            portrait_bytes=portrait_blob,
+            portrait_ext="jpg",
+            voiceover_bytes=voice_blob,
+            voiceover_ext="mp3",
+            replicate_api_key=replicate_api_key,
+        )
+        if isinstance(lip_result, (bytes, bytearray)):
+            video_blob = bytes(lip_result)
+        else:
+            video_blob = download_bytes(lip_result, timeout=300)
+    except ReplicateSafetyError as e:
+        _fail(db, j, f"🛑 Moderation отбила lipsync: {str(e)[:200]}")
+        return
+    except ReplicateTransientError as e:
+        log.warning("makeugc %s transient on lipsync: %s", j.id, e)
+        raise
+    except ReplicateError as e:
+        _fail(db, j, f"Replicate hard fail on lipsync: {str(e)[:200]}")
+        return
+    except Exception as e:
+        log.exception("makeugc %s lipsync unexpected fail", j.id)
+        _fail(db, j, f"внутренняя ошибка lipsync: {str(e)[:200]}")
+        return
+
+    lip_key = (
+        f"users/{j.user_id}/makeugc/{j.id}/"
+        f"lipsync-{uuid.uuid4().hex[:6]}.mp4"
+    )
+    r2.upload_bytes(lip_key, video_blob, content_type="video/mp4")
+    j.lipsync_key = lip_key
+    j.cost_usd = (j.cost_usd or Decimal("0")) + Decimal(str(lip_cost))
+
+    # Cutaway / concat are next-PR scope. Mark READY so the UI can
+    # preview the talking-head mp4 (which is the most expensive and
+    # most informative artifact in the pipeline by itself).
     j.status = MakeUGCStatus.READY
     j.completed_at = datetime.utcnow()
     db.commit()

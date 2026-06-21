@@ -47,4 +47,7 @@ replicate==1.0.7
 
 # MakeUGC — Pillow for the multi-photo collage that gives Flux Kontext
 # several angles of the bottle as a single input image.
+# pillow-heif lets PIL open iPhone HEIC/HEIF uploads (the default Photos
+# format on iOS); without it we can't read Nick's photos at all.
 Pillow==11.0.0
+pillow-heif==0.18.0

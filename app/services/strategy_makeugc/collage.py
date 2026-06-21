@@ -7,21 +7,43 @@ formally only accepts one reference — labels, proportions and 3D shape
 all reconstruct more reliably than from a single front-on shot.
 
 Layout:
-  1 photo  → straight pass-through (no PIL touched)
+  1 photo  → straight pass-through (re-encoded JPEG, rotated by EXIF)
   2 photos → 1×2 horizontal strip (each tile 1024×1024)
   3 photos → top-left + top-right + bottom (centered)
   4 photos → 2×2 grid
 
 Each tile is centre-fit (preserve aspect, pad black) so a portrait or
 landscape source doesn't get distorted.
+
+HEIC / HEIF support is registered at module load via pillow_heif so
+iPhone uploads decode transparently. EXIF orientation is applied
+before tiling so iPhone landscape-held shots don't end up sideways
+in the collage.
 """
 from __future__ import annotations
 
 import io
 from typing import Sequence
 
+try:
+    import pillow_heif
+
+    pillow_heif.register_heif_opener()
+except Exception:  # noqa: BLE001 — optional at import time
+    pass
+
 
 TILE_PX = 1024  # each cell is 1024×1024 — gives Flux a generous res per view
+
+
+def _open_image(blob: bytes):
+    """Decode any supported format (incl. HEIC/HEIF) and apply EXIF
+    orientation. Returns a PIL RGB image right-side-up."""
+    from PIL import Image, ImageOps
+
+    img = Image.open(io.BytesIO(blob))
+    img = ImageOps.exif_transpose(img)
+    return img.convert("RGB")
 
 
 def _fit_tile(img, tile_size: int):
@@ -53,18 +75,16 @@ def build_collage(
     if n > 4:
         raise ValueError("build_collage: max 4 images, got %d" % n)
 
-    # Single image — pass through but normalise to JPEG/RGB so downstream
-    # data-URI handling is uniform.
+    # Single image — pass through but normalise to JPEG/RGB (and decode
+    # HEIC + apply EXIF rotation) so downstream data-URI handling is
+    # uniform.
     if n == 1:
-        src = Image.open(io.BytesIO(image_bytes_list[0])).convert("RGB")
+        src = _open_image(image_bytes_list[0])
         buf = io.BytesIO()
         src.save(buf, format="JPEG", quality=jpeg_quality)
         return buf.getvalue()
 
-    tiles = [
-        _fit_tile(Image.open(io.BytesIO(b)).convert("RGB"), tile_size)
-        for b in image_bytes_list
-    ]
+    tiles = [_fit_tile(_open_image(b), tile_size) for b in image_bytes_list]
 
     if n == 2:
         canvas = Image.new("RGB", (tile_size * 2, tile_size), (0, 0, 0))

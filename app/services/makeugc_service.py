@@ -85,7 +85,10 @@ def create_makeugc_job_async(
             f"too many product images (max {MAX_PRODUCT_IMAGES})"
         )
 
-    # Validate + collect per-image specs before any R2 upload.
+    # Validate + collect per-image specs before any R2 upload. HEIC/HEIF/
+    # AVIF get transcoded to JPEG on the way in (with EXIF orientation
+    # applied) — so what lands in R2 is always a universally-decodable
+    # JPEG. Saves the worker and the /api/media proxy from format-sniff.
     image_specs: list[tuple[bytes, str, str]] = []  # (bytes, ext, content_type)
     for idx, (blob, ct) in enumerate(product_images):
         if not blob:
@@ -100,6 +103,21 @@ def create_makeugc_job_async(
             raise MakeUGCValidationError(
                 f"image #{idx + 1}: unsupported type {ct}"
             )
+        if ext in ("heic", "heif", "avif"):
+            # Decode + transcode to JPEG so downstream never sees HEIC.
+            try:
+                from app.services.strategy_makeugc.collage import _open_image
+                import io
+                img = _open_image(blob)
+                buf = io.BytesIO()
+                img.save(buf, format="JPEG", quality=92)
+                blob = buf.getvalue()
+                ext = "jpg"
+                ct = "image/jpeg"
+            except Exception as e:
+                raise MakeUGCValidationError(
+                    f"image #{idx + 1}: cannot decode HEIC/AVIF — {e}"
+                )
         image_specs.append((blob, ext, ct))
 
     broll_spec: tuple[bytes, str, str] | None = None

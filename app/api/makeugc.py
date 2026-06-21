@@ -116,6 +116,7 @@ async def create_job(
     premium_price_rub: str = Form(...),
     mimic_price_rub: str = Form(...),
     persona_style: str = Form("average-girl"),
+    broll_video: Optional[UploadFile] = File(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -130,6 +131,15 @@ async def create_job(
         blob = await f.read()
         images.append((blob, f.content_type or "application/octet-stream"))
 
+    broll_pair: tuple[bytes, str] | None = None
+    if broll_video is not None and broll_video.filename:
+        broll_blob = await broll_video.read()
+        if broll_blob:
+            broll_pair = (
+                broll_blob,
+                broll_video.content_type or "application/octet-stream",
+            )
+
     try:
         j = create_makeugc_job_async(
             db,
@@ -140,6 +150,7 @@ async def create_job(
             premium_price_rub=premium_dec,
             mimic_price_rub=mimic_dec,
             persona_style=persona_style,
+            broll_video=broll_pair,
         )
     except MakeUGCValidationError as e:
         raise HTTPException(400, str(e))

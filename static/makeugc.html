@@ -134,6 +134,19 @@
       </div>
     </div>
 
+    <!-- B-roll video (optional) -->
+    <label class="block text-xs text-gray-400 mb-1">
+      Реальное видео флакона (5-10 сек, опционально) — закрывает проблему AI-генерируемой бутылки
+    </label>
+    <div id="broll-dz" class="dropzone rounded-lg p-3 text-center cursor-pointer mb-4">
+      <div id="broll-empty" class="text-sm text-gray-400 py-3">
+        Можешь снять на iPhone: держишь флакон, нюхаешь, крутишь. Без звука — голос всё равно AI. До 30 MB.
+      </div>
+      <video id="broll-preview" class="hidden mx-auto rounded-lg max-h-48 mb-2" muted playsinline></video>
+      <button id="broll-remove" type="button" class="hidden text-xs text-gray-400 hover:text-white">убрать видео</button>
+      <input id="broll-input" type="file" accept="video/*" class="hidden">
+    </div>
+
     <!-- Persona style -->
     <label class="block text-xs text-gray-400 mb-2">Персона</label>
     <div class="grid grid-cols-2 gap-2 mb-4">
@@ -444,6 +457,54 @@ dz.addEventListener('drop', async e => {
   if (e.dataTransfer.files.length) await addFiles(e.dataTransfer.files);
 });
 
+// B-roll video upload (optional)
+const brollDz = document.getElementById('broll-dz');
+const brollInput = document.getElementById('broll-input');
+const brollPreview = document.getElementById('broll-preview');
+const brollEmpty = document.getElementById('broll-empty');
+const brollRemove = document.getElementById('broll-remove');
+let brollFile = null;
+let brollUrl = null;
+
+function setBroll(file) {
+  if (brollUrl) { URL.revokeObjectURL(brollUrl); brollUrl = null; }
+  brollFile = file;
+  if (!file) {
+    brollPreview.classList.add('hidden');
+    brollPreview.src = '';
+    brollRemove.classList.add('hidden');
+    brollEmpty.classList.remove('hidden');
+    return;
+  }
+  brollUrl = URL.createObjectURL(file);
+  brollPreview.src = brollUrl;
+  brollPreview.classList.remove('hidden');
+  brollRemove.classList.remove('hidden');
+  brollEmpty.classList.add('hidden');
+}
+
+brollDz.onclick = e => {
+  // ignore clicks on the remove button
+  if (e.target === brollRemove) return;
+  brollInput.click();
+};
+brollInput.onchange = () => {
+  const f = brollInput.files[0];
+  if (f) setBroll(f);
+  brollInput.value = '';
+};
+brollRemove.onclick = e => { e.stopPropagation(); setBroll(null); };
+['dragover', 'dragenter'].forEach(ev => brollDz.addEventListener(ev, e => {
+  e.preventDefault(); brollDz.classList.add('drag');
+}));
+['dragleave', 'drop'].forEach(ev => brollDz.addEventListener(ev, e => {
+  e.preventDefault(); brollDz.classList.remove('drag');
+}));
+brollDz.addEventListener('drop', e => {
+  const f = e.dataTransfer.files[0];
+  if (f && f.type.startsWith('video/')) setBroll(f);
+});
+
 // Persona selection
 let selectedStyle = 'average-girl';
 document.querySelectorAll('.persona-card').forEach(c => {
@@ -484,6 +545,7 @@ document.getElementById('m-submit').onclick = async () => {
   fd.append('premium_price_rub', premPrice);
   fd.append('mimic_price_rub', mimicPrice);
   fd.append('persona_style', selectedStyle);
+  if (brollFile) fd.append('broll_video', brollFile);
 
   document.getElementById('m-submit').disabled = true;
   document.getElementById('m-submit').textContent = 'Создаю…';
@@ -499,6 +561,7 @@ document.getElementById('m-submit').onclick = async () => {
     // reset form
     stagedFiles = [];
     renderStaged();
+    setBroll(null);
     photoInput.value = '';
     document.getElementById('m-name').value = '';
     document.getElementById('m-brand').value = '';

@@ -39,6 +39,13 @@ ALLOWED_PRODUCT_CONTENT_TYPES = {
 
 MAX_PRODUCT_IMAGES = 4
 
+MAX_BROLL_BYTES = 30 * 1024 * 1024  # 30 MB — covers 10s iPhone 1080p H.264
+ALLOWED_BROLL_CONTENT_TYPES = {
+    "video/mp4": "mp4",
+    "video/quicktime": "mov",
+    "video/webm": "webm",
+}
+
 
 def create_makeugc_job_async(
     db: Session,
@@ -50,6 +57,7 @@ def create_makeugc_job_async(
     premium_price_rub: Decimal,
     mimic_price_rub: Decimal,
     persona_style: str,
+    broll_video: tuple[bytes, str] | None = None,
 ) -> MakeUGCJob:
     """`product_images` is a list of (bytes, content_type) — 1..4 angles
     of the same bottle. The worker collages them into a single Flux
@@ -94,6 +102,24 @@ def create_makeugc_job_async(
             )
         image_specs.append((blob, ext, ct))
 
+    broll_spec: tuple[bytes, str, str] | None = None
+    if broll_video:
+        blob, ct = broll_video
+        if not blob:
+            raise MakeUGCValidationError("broll video is empty")
+        if len(blob) > MAX_BROLL_BYTES:
+            raise MakeUGCValidationError(
+                f"broll video too large "
+                f"(max {MAX_BROLL_BYTES // (1024 * 1024)} MB)"
+            )
+        ext = ALLOWED_BROLL_CONTENT_TYPES.get(ct)
+        if not ext:
+            raise MakeUGCValidationError(
+                f"unsupported broll video type: {ct} "
+                f"(allowed: {sorted(ALLOWED_BROLL_CONTENT_TYPES)})"
+            )
+        broll_spec = (blob, ext, ct)
+
     r2 = get_r2()
     key_uuid = uuid.uuid4().hex[:12]
     keys: list[str] = []
@@ -101,6 +127,12 @@ def create_makeugc_job_async(
         key = f"users/{user.id}/makeugc/{key_uuid}/product-{idx + 1}.{ext}"
         r2.upload_bytes(key, blob, content_type=ct)
         keys.append(key)
+
+    broll_key: str | None = None
+    if broll_spec:
+        blob, ext, ct = broll_spec
+        broll_key = f"users/{user.id}/makeugc/{key_uuid}/broll.{ext}"
+        r2.upload_bytes(broll_key, blob, content_type=ct)
 
     job = MakeUGCJob(
         user_id=user.id,
@@ -111,6 +143,7 @@ def create_makeugc_job_async(
         premium_price_rub=premium_price_rub,
         mimic_price_rub=mimic_price_rub,
         persona_style=persona_style,
+        broll_video_key=broll_key,
         status=MakeUGCStatus.PENDING,
         cost_usd=Decimal("0"),
         created_at=datetime.utcnow(),

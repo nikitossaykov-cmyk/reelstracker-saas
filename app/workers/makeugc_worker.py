@@ -37,6 +37,7 @@ from app.services.strategy_makeugc.concat import ConcatError, concat_parts
 from app.services.strategy_makeugc.cutaway import (
     CutawayError,
     apply_image_cutaway,
+    apply_video_cutaway,
 )
 from app.services.strategy_makeugc.lipsync import generate_lipsync
 from app.services.strategy_makeugc.script import (
@@ -276,17 +277,21 @@ def process_job(db: Session, j: MakeUGCJob, user: User) -> None:
         j.cost_usd = (j.cost_usd or Decimal("0")) + Decimal(str(lip_cost))
         db.commit()
 
-    # --- Stage: CUTAWAY (bottle-hero auto-gen + ffmpeg insert) ---
-    if j.broll_video_key:
-        _fail(
-            db, j,
-            "B-roll video upload путь ещё не реализован — пока auto-gen "
-            "bottle-hero. Запусти job без broll_video_key."
-        )
-        return
+    # --- Stage: CUTAWAY (B-roll if uploaded, otherwise bottle-hero auto-gen) ---
+    _mark_stage(db, j, MakeUGCStatus.CUTAWAY)
+    use_video_broll = bool(j.broll_video_key)
+    bottle_blob: bytes | None = None
+    broll_video_blob: bytes | None = None
 
-    if not j.bottle_hero_key:
-        _mark_stage(db, j, MakeUGCStatus.CUTAWAY)
+    if use_video_broll:
+        # User-uploaded real B-roll: skip bottle-hero gen entirely (saves
+        # the $0.06 Flux Kontext PRO call) and feed the video directly
+        # to ffmpeg below.
+        broll_obj = r2._client.get_object(
+            Bucket=r2.bucket, Key=j.broll_video_key
+        )
+        broll_video_blob = broll_obj["Body"].read()
+    elif not j.bottle_hero_key:
         try:
             bottle_result, bottle_cost = generate_bottle_hero(
                 product_image_bytes=product_bytes,
@@ -314,7 +319,6 @@ def process_job(db: Session, j: MakeUGCJob, user: User) -> None:
         j.cost_usd = (j.cost_usd or Decimal("0")) + Decimal(str(bottle_cost))
         db.commit()
     else:
-        _mark_stage(db, j, MakeUGCStatus.CUTAWAY)
         bottle_obj = r2._client.get_object(
             Bucket=r2.bucket, Key=j.bottle_hero_key
         )
@@ -336,21 +340,32 @@ def process_job(db: Session, j: MakeUGCJob, user: User) -> None:
         with tempfile.TemporaryDirectory(prefix="makeugc_") as tmpdir:
             tmp = Path(tmpdir)
             lipsync_tmp = tmp / "lipsync.mp4"
-            bottle_tmp = tmp / "bottle.jpg"
             cutaway_tmp = tmp / "cutaway.mp4"
             final_tmp = tmp / "final.mp4"
             hook_tmp = tmp / "hook.mp4"
 
             lipsync_tmp.write_bytes(video_blob)
-            bottle_tmp.write_bytes(bottle_blob)
 
-            apply_image_cutaway(
-                base_video=lipsync_tmp,
-                insert_image=bottle_tmp,
-                out_path=cutaway_tmp,
-                start_seconds=10.0,
-                end_seconds=13.0,
-            )
+            if use_video_broll:
+                broll_tmp = tmp / "broll.mp4"
+                broll_tmp.write_bytes(broll_video_blob)
+                apply_video_cutaway(
+                    base_video=lipsync_tmp,
+                    insert_video=broll_tmp,
+                    out_path=cutaway_tmp,
+                    start_seconds=10.0,
+                    end_seconds=13.0,
+                )
+            else:
+                bottle_tmp = tmp / "bottle.jpg"
+                bottle_tmp.write_bytes(bottle_blob)
+                apply_image_cutaway(
+                    base_video=lipsync_tmp,
+                    insert_image=bottle_tmp,
+                    out_path=cutaway_tmp,
+                    start_seconds=10.0,
+                    end_seconds=13.0,
+                )
 
             # --- Stage: CONCAT (hook + cutaway-augmented lipsync) ---
             _mark_stage(db, j, MakeUGCStatus.CONCAT)

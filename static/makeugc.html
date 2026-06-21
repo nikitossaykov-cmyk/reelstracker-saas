@@ -375,8 +375,18 @@ function renderStaged() {
     const url = URL.createObjectURL(f);
     stagedPreviewUrls.push(url);
     const img = document.createElement('img');
-    img.src = url;  // synchronous — no broken-icon flash
+    img.src = url;
     img.className = 'w-full h-full object-cover';
+    // HEIC and other formats Chrome/Safari-Mac can't decode through <img>
+    // fall back to a labeled placeholder so the user still sees "loaded".
+    img.onerror = () => {
+      const kb = Math.round((f.size || 0) / 1024);
+      const ext = (f.name || '').split('.').pop() || 'image';
+      img.replaceWith(Object.assign(document.createElement('div'), {
+        className: 'w-full h-full flex flex-col items-center justify-center text-xs text-gray-300 px-2 text-center',
+        innerHTML: `<div class="text-2xl mb-1">🖼</div><div class="font-semibold uppercase">${ext}</div><div class="text-gray-500">${kb} KB</div>`,
+      }));
+    };
     const rm = document.createElement('button');
     rm.textContent = '×';
     rm.className = 'absolute top-1 right-1 w-6 h-6 rounded-full bg-black/70 text-white text-xs hover:bg-red-500';

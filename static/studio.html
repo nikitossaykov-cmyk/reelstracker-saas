@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Studio — ReelsTracker</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { background: linear-gradient(135deg,#0f0c29,#302b63,#24243e); min-height:100vh; }
+  .glass { background: rgba(255,255,255,.07); backdrop-filter: blur(14px);
+           border:1px solid rgba(255,255,255,.12); border-radius:1rem; }
+  .chip { font-size:.65rem; padding:.15rem .5rem; border-radius:9999px;
+          border:1px solid rgba(255,255,255,.2); }
+  .chip-done { background:#16a34a33; border-color:#16a34a; color:#86efac; }
+  .chip-active { background:#eab30833; border-color:#eab308; color:#fde047;
+                 animation: pulse 1.2s infinite; }
+  .chip-fail { background:#dc262633; border-color:#dc2626; color:#fca5a5; }
+</style>
+</head>
+<body class="text-white">
+<nav class="glass m-4 px-6 py-3 flex items-center gap-6 text-sm">
+  <a href="/" class="font-bold">ReelsTracker</a>
+  <a href="/forge" class="opacity-70 hover:opacity-100">Forge</a>
+  <a href="/makeugc" class="opacity-70 hover:opacity-100">MakeUGC</a>
+  <span class="font-semibold text-amber-300">Studio</span>
+  <button id="logout-btn" class="ml-auto opacity-60 hover:opacity-100">выйти</button>
+</nav>
+
+<div class="max-w-6xl mx-auto p-4 grid md:grid-cols-[380px_1fr] gap-6">
+  <!-- ФОРМА -->
+  <div class="glass p-6 space-y-4 self-start">
+    <h1 class="text-xl font-bold">Single-take рилс</h1>
+    <div>
+      <label class="text-xs opacity-70">Название продукта (как на этикетке)</label>
+      <input id="f-name" class="w-full mt-1 bg-white/10 rounded-lg px-3 py-2 text-sm" placeholder="WHITE CHOCOLATE">
+    </div>
+    <div>
+      <label class="text-xs opacity-70">Бренд-оригинал</label>
+      <input id="f-brand" class="w-full mt-1 bg-white/10 rounded-lg px-3 py-2 text-sm" placeholder="Richard Maison de Parfum">
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="text-xs opacity-70">Цена оригинала ₽</label>
+        <input id="f-dupe-price" type="number" class="w-full mt-1 bg-white/10 rounded-lg px-3 py-2 text-sm" placeholder="16000">
+      </div>
+      <div>
+        <label class="text-xs opacity-70">Наша цена ₽</label>
+        <input id="f-price" type="number" class="w-full mt-1 bg-white/10 rounded-lg px-3 py-2 text-sm" placeholder="1990">
+      </div>
+    </div>
+    <div>
+      <label class="text-xs opacity-70">Фото продукта (1-4)</label>
+      <input id="f-photos" type="file" accept="image/*" multiple
+             class="w-full mt-1 text-xs file:bg-white/10 file:border-0 file:rounded-lg file:px-3 file:py-2 file:text-white file:mr-3">
+    </div>
+    <div>
+      <div class="flex items-center justify-between">
+        <label class="text-xs opacity-70">Сценарий</label>
+        <button id="btn-script" onclick="genScript()" class="text-xs text-amber-300 hover:underline">сгенерировать</button>
+      </div>
+      <textarea id="f-script" rows="5" class="w-full mt-1 bg-white/10 rounded-lg px-3 py-2 text-sm"
+        placeholder="Оставь пустым и нажми «сгенерировать», или впиши свой текст"></textarea>
+    </div>
+    <div class="flex items-center gap-4">
+      <label class="text-xs opacity-70">Голос:</label>
+      <label class="text-sm"><input type="radio" name="voice" value="normal" checked> обычный</label>
+      <label class="text-sm"><input type="radio" name="voice" value="asmr"> ASMR-шёпот</label>
+    </div>
+    <label class="text-sm flex items-center gap-2">
+      <input id="f-captions" type="checkbox" checked> субтитры (word-by-word)
+    </label>
+    <div>
+      <label class="text-xs opacity-70">Hook-клип (опционально, mp4/mov)</label>
+      <input id="f-hook" type="file" accept="video/*"
+             class="w-full mt-1 text-xs file:bg-white/10 file:border-0 file:rounded-lg file:px-3 file:py-2 file:text-white file:mr-3">
+    </div>
+    <button id="btn-go" onclick="createJob()"
+      class="w-full bg-amber-400 text-black font-bold rounded-xl py-3 hover:bg-amber-300 disabled:opacity-40">
+      Сделать рилс
+    </button>
+    <p id="form-err" class="text-xs text-red-300"></p>
+  </div>
+
+  <!-- ДЖОБЫ -->
+  <div id="jobs" class="space-y-4"></div>
+</div>
+
+<script>
+/* ── auth: скопировано 1:1 из makeugc.html ── */
+let ACCESS = localStorage.getItem('access_token');
+if (!ACCESS) { location.href = '/login.html'; }
+function hdr() { return { 'Authorization': 'Bearer ' + ACCESS }; }
+
+async function tryRefresh() {
+  const rt = localStorage.getItem('refresh_token');
+  if (!rt) return false;
+  try {
+    const r = await fetch('/api/auth/refresh', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: rt }),
+    });
+    if (!r.ok) return false;
+    const d = await r.json();
+    if (d.access_token) {
+      ACCESS = d.access_token;
+      localStorage.setItem('access_token', d.access_token);
+      if (d.refresh_token) localStorage.setItem('refresh_token', d.refresh_token);
+      return true;
+    }
+  } catch (e) { console.error('refresh', e); }
+  return false;
+}
+
+async function authFetch(url, opts = {}) {
+  opts.headers = { ...(opts.headers || {}), ...hdr() };
+  let r = await fetch(url, opts);
+  if (r.status === 401) {
+    if (await tryRefresh()) {
+      opts.headers = { ...(opts.headers || {}), ...hdr() };
+      r = await fetch(url, opts);
+    } else {
+      localStorage.clear(); location.href = '/login.html';
+    }
+  }
+  return r;
+}
+
+document.getElementById('logout-btn').onclick = () => {
+  localStorage.clear(); location.href = '/login.html';
+};
+
+/* ── Studio ── */
+const STAGES = [
+  ['portrait',  'Портрет'],
+  ['voiceover', 'Озвучка'],
+  ['lipsync',   'Липсинк'],
+  ['assemble',  'Сборка'],
+  ['judge',     'QC'],
+];
+const ORDER = ['pending','portrait','voiceover','lipsync','assemble','judge','ready'];
+
+function chips(j) {
+  const idx = ORDER.indexOf(j.status);
+  return STAGES.map(([key, label]) => {
+    const kidx = ORDER.indexOf(key);
+    let cls = 'chip opacity-50';
+    if (j.status === 'failed') {
+      cls = kidx < idx || (j[key + '_key'] || (key === 'judge' && j.judge_score != null))
+        ? 'chip chip-done' : 'chip chip-fail';
+    } else if (j.status === 'ready' || kidx < idx) cls = 'chip chip-done';
+    else if (kidx === idx) cls = 'chip chip-active';
+    return `<span class="${cls}">${label}</span>`;
+  }).join(' <span class="opacity-30">→</span> ');
+}
+
+function judgeBadge(j) {
+  if (j.status !== 'ready') return '';
+  if (j.judge_score == null)
+    return '<span class="chip opacity-60">QC недоступен</span>';
+  const v = (j.judge_report && j.judge_report.verdict) || '';
+  const color = j.judge_score >= 8 ? 'chip-done' : (j.judge_score >= 6 ? 'chip-active' : 'chip-fail');
+  return `<span class="chip ${color}">QC ${j.judge_score}/10 ${v}</span>`;
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}
+
+function card(j) {
+  const media = j.status === 'ready' && j.output_key
+    ? `<video controls playsinline class="rounded-xl w-full max-w-[240px] aspect-[9/16] object-cover bg-black"
+         src="/api/media?key=${encodeURIComponent(j.output_key)}"></video>`
+    : (j.portrait_key
+        ? `<img src="/api/media?key=${encodeURIComponent(j.portrait_key)}"
+             class="rounded-xl w-full max-w-[240px] aspect-[9/16] object-cover">`
+        : '<div class="rounded-xl w-full max-w-[240px] aspect-[9/16] bg-white/5 flex items-center justify-center text-4xl">🎬</div>');
+  const err = j.error_message
+    ? `<p class="text-xs text-red-300 mt-2">${esc(j.error_message)}</p>` : '';
+  const retry = (j.status === 'failed' || j.status === 'ready')
+    ? `<button onclick="retryJob(${j.id})" class="text-xs text-amber-300 hover:underline mt-2">перегенерить</button>` : '';
+  return `<div class="glass p-4 flex gap-4">
+    <div class="shrink-0 w-[160px] md:w-[200px]">${media}</div>
+    <div class="min-w-0 flex-1">
+      <div class="flex items-center gap-2 flex-wrap">
+        <span class="font-semibold">${esc(j.product_name)}</span>
+        <span class="text-xs opacity-60">${esc(j.brand)}</span>
+        <span class="text-xs opacity-60">$${j.cost_usd.toFixed(2)}</span>
+        ${judgeBadge(j)}
+      </div>
+      <div class="mt-2 flex items-center gap-1 flex-wrap">${chips(j)}</div>
+      ${err}${retry}
+    </div>
+  </div>`;
+}
+
+async function loadJobs() {
+  const r = await authFetch('/api/studio/jobs/');
+  if (!r.ok) return;
+  const d = await r.json();
+  document.getElementById('jobs').innerHTML =
+    d.items.map(card).join('') ||
+    '<div class="glass p-8 text-center opacity-60">Пока нет рилсов — заполни форму слева</div>';
+}
+
+async function genScript() {
+  const btn = document.getElementById('btn-script');
+  btn.textContent = 'генерирую…';
+  try {
+    const r = await authFetch('/api/studio/script', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        product_name: document.getElementById('f-name').value,
+        brand: document.getElementById('f-brand').value,
+        price_rub: +document.getElementById('f-price').value || 0,
+        dupe_price_rub: +document.getElementById('f-dupe-price').value || 0,
+        voice_style: document.querySelector('input[name=voice]:checked').value,
+      }),
+    });
+    const d = await r.json();
+    if (r.ok) document.getElementById('f-script').value = d.script_text;
+    else document.getElementById('form-err').textContent = d.detail || 'ошибка';
+  } finally { btn.textContent = 'сгенерировать'; }
+}
+
+async function createJob() {
+  const err = document.getElementById('form-err');
+  err.textContent = '';
+  const photos = document.getElementById('f-photos').files;
+  if (!photos.length) { err.textContent = 'Добавь хотя бы одно фото продукта'; return; }
+  const fd = new FormData();
+  for (const f of photos) fd.append('product_images', f);
+  fd.append('product_name', document.getElementById('f-name').value);
+  fd.append('brand', document.getElementById('f-brand').value);
+  fd.append('price_rub', document.getElementById('f-price').value);
+  fd.append('dupe_price_rub', document.getElementById('f-dupe-price').value);
+  fd.append('script_text', document.getElementById('f-script').value);
+  fd.append('voice_style', document.querySelector('input[name=voice]:checked').value);
+  fd.append('captions_enabled', document.getElementById('f-captions').checked);
+  const hook = document.getElementById('f-hook').files[0];
+  if (hook) fd.append('hook_video', hook);
+
+  const btn = document.getElementById('btn-go');
+  btn.disabled = true; btn.textContent = 'Отправляю…';
+  try {
+    const r = await authFetch('/api/studio/jobs/', { method: 'POST', body: fd });
+    const d = await r.json();
+    if (!r.ok) { err.textContent = d.detail || 'ошибка'; return; }
+    loadJobs();
+  } finally { btn.disabled = false; btn.textContent = 'Сделать рилс'; }
+}
+
+async function retryJob(id) {
+  await authFetch(`/api/studio/jobs/${id}/retry`, { method: 'POST' });
+  loadJobs();
+}
+
+loadJobs();
+setInterval(loadJobs, 5000);
+</script>
+</body>
+</html>

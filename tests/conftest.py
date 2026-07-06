@@ -149,6 +149,7 @@ def auth_client(test_user, db_session):
     from app.main import app
     app.dependency_overrides[get_current_user] = lambda: test_user
     app.dependency_overrides[get_db] = lambda: db_session
-    with TestClient(app) as c:
-        yield c
+    # No context manager: lifespan would create_all on the real
+    # DATABASE_URL and spawn worker threads — tests need neither.
+    yield TestClient(app)
     app.dependency_overrides.clear()

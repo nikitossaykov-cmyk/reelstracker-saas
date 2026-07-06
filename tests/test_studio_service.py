@@ -224,3 +224,75 @@ def test_worker_stage_failure_marks_failed(
 
     assert j.status == StudioStatus.FAILED
     assert "portrait" in j.error_message
+
+
+def test_api_create_and_list_and_retry(auth_client, db_session, test_user, fake_r2):
+    r = auth_client.post(
+        "/api/studio/jobs/",
+        files={"product_images": ("p.jpg", JPEG, "image/jpeg")},
+        data={
+            "product_name": "WHITE CHOCOLATE",
+            "brand": "Richard Maison",
+            "price_rub": "1990",
+            "dupe_price_rub": "16000",
+            "voice_style": "asmr",
+            "captions_enabled": "true",
+        },
+    )
+    assert r.status_code == 202, r.text
+    jid = r.json()["id"]
+    assert r.json()["status"] == "pending"
+
+    r = auth_client.get("/api/studio/jobs/")
+    assert r.status_code == 200
+    assert any(item["id"] == jid for item in r.json()["items"])
+
+    # simulate a failed job → retry resets to PENDING and clears stage keys
+    j = db_session.query(StudioJob).get(jid)
+    j.status = StudioStatus.FAILED
+    j.error_message = "boom"
+    j.portrait_key = "k/p.jpg"
+    j.judge_score = 3
+    db_session.commit()
+
+    r = auth_client.post(f"/api/studio/jobs/{jid}/retry")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "pending"
+    assert body["portrait_key"] is None
+    assert body["judge_score"] is None
+    assert body["error_message"] is None
+
+
+def test_api_cross_user_404(auth_client, db_session, other_user, fake_r2):
+    j = StudioJob(
+        user_id=other_user.id,
+        product_image_keys=["x"],
+        product_name="X", brand="Y",
+        price_rub=Decimal("1"), dupe_price_rub=Decimal("2"),
+        voice_style="normal", captions_enabled=True,
+        status=StudioStatus.PENDING, cost_usd=Decimal("0"),
+        created_at=datetime.utcnow(),
+    )
+    db_session.add(j)
+    db_session.commit()
+    assert auth_client.get(f"/api/studio/jobs/{j.id}").status_code == 404
+    assert auth_client.post(f"/api/studio/jobs/{j.id}/retry").status_code == 404
+
+
+def test_api_script_autogen(auth_client, monkeypatch):
+    import app.api.studio as api_mod
+    monkeypatch.setattr(
+        api_mod, "generate_studio_script",
+        lambda **kw: "Я это заказала. Ну что?",
+    )
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    r = auth_client.post("/api/studio/script", json={
+        "product_name": "WHITE CHOCOLATE",
+        "brand": "Richard Maison",
+        "price_rub": 1990,
+        "dupe_price_rub": 16000,
+        "voice_style": "asmr",
+    })
+    assert r.status_code == 200
+    assert r.json()["script_text"].startswith("Я это заказала")

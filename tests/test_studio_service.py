@@ -280,6 +280,29 @@ def test_api_cross_user_404(auth_client, db_session, other_user, fake_r2):
     assert auth_client.post(f"/api/studio/jobs/{j.id}/retry").status_code == 404
 
 
+def test_media_allowlist_covers_studio_keys(db_session, test_user):
+    from app.api.media import _verify_key_in_db
+
+    j = StudioJob(
+        user_id=test_user.id,
+        product_image_keys=["u/7/studio/1/product-1.jpg"],
+        product_name="X", brand="Y",
+        price_rub=Decimal("1"), dupe_price_rub=Decimal("2"),
+        voice_style="normal", captions_enabled=True,
+        status=StudioStatus.READY, cost_usd=Decimal("0"),
+        output_key="u/7/studio/1/final-abc.mp4",
+        portrait_key="u/7/studio/1/portrait-abc.jpg",
+        created_at=datetime.utcnow(),
+    )
+    db_session.add(j)
+    db_session.commit()
+
+    assert _verify_key_in_db("u/7/studio/1/final-abc.mp4", db_session)
+    assert _verify_key_in_db("u/7/studio/1/portrait-abc.jpg", db_session)
+    assert _verify_key_in_db("u/7/studio/1/product-1.jpg", db_session)
+    assert not _verify_key_in_db("u/7/studio/1/nonexistent.mp4", db_session)
+
+
 def test_api_script_autogen(auth_client, monkeypatch):
     import app.api.studio as api_mod
     monkeypatch.setattr(

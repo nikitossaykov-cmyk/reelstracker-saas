@@ -29,6 +29,7 @@ from app.models.generation import GeneratedVideo
 from app.models.makeugc_job import MakeUGCJob
 from app.models.persona import Persona
 from app.models.reel import Reel
+from app.models.studio_job import StudioJob
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,19 @@ def _verify_key_in_db(key: str, db: Session) -> bool:
                        | cast(MakeUGCJob.product_image_keys, SAString).contains(key)
                    )
                    .first() is not None)
-    return has_makeugc
+    if has_makeugc:
+        return True
+    has_studio = (db.query(StudioJob)
+                  .filter(
+                      (StudioJob.hook_video_key == key)
+                      | (StudioJob.portrait_key == key)
+                      | (StudioJob.voiceover_key == key)
+                      | (StudioJob.lipsync_key == key)
+                      | (StudioJob.output_key == key)
+                      | cast(StudioJob.product_image_keys, SAString).contains(key)
+                  )
+                  .first() is not None)
+    return has_studio
 
 
 def _parse_range(header: Optional[str], size: int) -> Optional[tuple[int, int]]:

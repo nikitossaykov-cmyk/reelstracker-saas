@@ -489,6 +489,17 @@ async def lifespan(app: FastAPI):
         ).start()
         logger.info("✅ MakeUGC worker запущен")
 
+    # Studio worker — drains studio_jobs rows through the single-take
+    # pipeline (portrait → voiceover → lipsync → assemble → judge).
+    if os.getenv("WORKER_STUDIO", "1") == "1":
+        from app.database import SessionLocal as _StudioSession
+        from app.workers.studio_worker import run_loop as studio_loop
+        threading.Thread(
+            target=studio_loop, args=(_StudioSession,),
+            daemon=True, name="studio-worker",
+        ).start()
+        logger.info("✅ Studio worker запущен")
+
     # RunPod auto-stop tick — every minute, stops the Wan pod if no
     # Mode 2 row has been RUNNING within WAN_POD_IDLE_MIN minutes.
     if os.getenv("WAN_POD_AUTOSTOP", "1") == "1":
@@ -556,6 +567,7 @@ from app.api.forge import router as forge_router
 from app.api.media import router as media_router
 from app.api.personas import router as personas_router
 from app.api.makeugc import router as makeugc_router
+from app.api.studio import router as studio_router
 
 app.include_router(auth_router, prefix="/api/auth", tags=["Auth"])
 app.include_router(reels_router, prefix="/api/reels", tags=["Reels"])
@@ -577,6 +589,7 @@ app.include_router(forge_router, prefix="/api/forge", tags=["Forge"])
 app.include_router(media_router, prefix="/api/media", tags=["Media"])
 app.include_router(personas_router, prefix="/api/personas", tags=["Personas"])
 app.include_router(makeugc_router, prefix="/api/makeugc", tags=["MakeUGC"])
+app.include_router(studio_router, prefix="/api/studio", tags=["Studio"])
 
 # ─── Static Files ──────────────────────────────────────────
 
@@ -612,6 +625,11 @@ async def settings_page_redirect():
 @app.get("/makeugc")
 async def makeugc_page():
     return FileResponse("static/makeugc.html")
+
+
+@app.get("/studio")
+async def studio_page():
+    return FileResponse("static/studio.html")
 
 
 @app.get("/personas")

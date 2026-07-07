@@ -15,6 +15,7 @@ from app.models.billing import CreditTransaction, TransactionType
 from app.models.recipe import ContentRecipe
 from app.models.persona import Persona, PersonaStatus
 from app.models.makeugc_job import MakeUGCJob, MakeUGCStatus
+from app.models.studio_job import StudioJob, StudioStatus
 
 __all__ = [
     "User",
@@ -36,4 +37,6 @@ __all__ = [
     "PersonaStatus",
     "MakeUGCJob",
     "MakeUGCStatus",
+    "StudioJob",
+    "StudioStatus",
 ]

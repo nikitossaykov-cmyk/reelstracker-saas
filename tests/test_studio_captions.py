@@ -145,6 +145,7 @@ def test_studio_script_prompt_asmr_vs_normal():
     )
     assert "шёпот" in p.lower()
     assert "тысяча девятьсот девяносто рублей" in p
+    assert "НЕ совершает действий" in p
     p2 = build_studio_script_prompt(
         product_name="WHITE CHOCOLATE", brand="Richard Maison",
         price_rub=1990.0, dupe_price_rub=16000.0, voice_style="normal",

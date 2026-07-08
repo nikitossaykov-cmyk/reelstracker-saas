@@ -13,6 +13,7 @@ import urllib.error
 import urllib.request
 
 from app.services.strategy_makeugc.voiceover import VoiceoverError
+from app.services.strategy_single_take.captions import strip_stage_directions
 
 
 TTS_MODEL_V3 = "eleven_v3"
@@ -35,6 +36,12 @@ def apply_asmr_tags(text: str) -> str:
     return " ".join(out)
 
 
+def prepare_tts_text(script_text: str, *, asmr: bool) -> str:
+    """Strip «(пауза)»-ремарки (иначе голос читает их вслух), then tag."""
+    text = strip_stage_directions(script_text)
+    return apply_asmr_tags(text) if asmr else text
+
+
 def generate_voiceover_v3(
     *,
     script_text: str,
@@ -50,7 +57,7 @@ def generate_voiceover_v3(
     if not script_text or not script_text.strip():
         raise VoiceoverError("script_text is empty")
 
-    text = apply_asmr_tags(script_text) if asmr else script_text
+    text = prepare_tts_text(script_text, asmr=asmr)
     body = {
         "text": text,
         "model_id": TTS_MODEL_V3,

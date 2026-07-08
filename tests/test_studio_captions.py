@@ -115,6 +115,32 @@ def test_apply_asmr_tags():
     assert apply_asmr_tags(text) == "[whispers] Я это заказала. [whispers] Ну что?"
 
 
+def test_strip_stage_directions():
+    from app.services.strategy_single_take.captions import strip_stage_directions
+    text = "Сейчас открою…\n\n(Пауза)\n\nКакой же он удивительный!"
+    out = strip_stage_directions(text)
+    assert "ауза" not in out
+    assert "Сейчас открою…" in out and "Какой же он удивительный!" in out
+    assert strip_stage_directions("До (длинная пауза) после") == "До после"
+    # не-паузные скобки не трогаем
+    assert strip_stage_directions("аналог (оригинала)") == "аналог (оригинала)"
+
+
+def test_prepare_tts_text_strips_pause_remark():
+    from app.services.strategy_single_take.voiceover import prepare_tts_text
+    text = "Сейчас открою… (пауза) Какой же он!"
+    plain = prepare_tts_text(text, asmr=False)
+    assert "пауза" not in plain
+    asmr = prepare_tts_text(text, asmr=True)
+    assert "пауза" not in asmr
+    assert "[whispers]" in asmr
+
+
+def test_split_sentences_drops_pause_remark():
+    text = "Сейчас открою… (Пауза) Какой же он!"
+    assert split_sentences(text) == ["Сейчас открою", "Какой же он"]
+
+
 def test_apply_asmr_tags_idempotent_on_tagged_text():
     from app.services.strategy_single_take.voiceover import apply_asmr_tags
     text = "[whispers] Уже с тегом."
@@ -186,10 +212,18 @@ def test_pick_insert_gap_ignores_gap_outside_window():
     assert pick_insert_gap([(0.0, 9.0), (9.8, 10.0)], total=10.0) is None
 
 
+def test_pick_insert_gap_fallback_micro_gap():
+    from app.services.strategy_single_take.captions import pick_insert_gap
+    # ASMR-шёпот не даёт паузу ≥0.5s (job#6): берём самый длинный
+    # межфразовый микро-гэп, а не молча пропускаем вставки
+    spans = [(0.0, 3.0), (3.1, 5.0), (5.2, 7.0), (7.28, 10.0)]
+    assert pick_insert_gap(spans, total=10.0) == pytest.approx(7.14)
+
+
 def test_pick_insert_gap_too_short_or_none():
     from app.services.strategy_single_take.captions import pick_insert_gap
-    # longest in-window gap is 0.4s < 0.5s min
-    assert pick_insert_gap([(0.0, 5.0), (5.4, 10.0)], total=10.0) is None
+    # даже для fallback гэп должен быть ≥0.08s
+    assert pick_insert_gap([(0.0, 5.0), (5.05, 10.0)], total=10.0) is None
     # single span → no gaps at all
     assert pick_insert_gap([(0.0, 10.0)], total=10.0) is None
     assert pick_insert_gap([], total=10.0) is None

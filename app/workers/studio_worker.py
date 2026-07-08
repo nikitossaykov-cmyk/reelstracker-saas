@@ -133,6 +133,7 @@ def _assemble(
     parts: list[Path] = [body]
     if insert_paths:
         split_at = pick_insert_gap(spans, vo_total)
+        log.info("studio %s cutaway split_at=%s (spans=%d)", j.id, split_at, len(spans))
     if split_at is not None:
         body_a = cut_clip(body, tmp / "body_a.mp4", start=0.0, end=split_at)
         body_b = cut_clip(body, tmp / "body_b.mp4", start=split_at)

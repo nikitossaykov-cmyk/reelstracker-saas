@@ -17,6 +17,13 @@ SILENCE_NORMAL = ("-25dB", 0.12)
 _START_RE = re.compile(r"silence_start:\s*([\d.]+)")
 _END_RE = re.compile(r"silence_end:\s*([\d.]+)")
 _TAG_RE = re.compile(r"\[[a-z ]+\]\s*", re.IGNORECASE)  # eleven_v3 audio tags
+# GPT leaks «(пауза)»-ремарки despite the prompt ban; if they reach TTS
+# the voice reads «пауза» aloud, and captions show it on screen
+_REMARK_RE = re.compile(r"\(\s*[^)]*пауза[^)]*\)|\(\s*pause[^)]*\)", re.IGNORECASE)
+
+
+def strip_stage_directions(text: str) -> str:
+    return re.sub(r"[ \t]{2,}", " ", _REMARK_RE.sub("", text or "")).strip()
 
 ASS_HEADER = """[Script Info]
 PlayResX: 720
@@ -71,7 +78,7 @@ def speech_spans(
 def split_sentences(text: str) -> list[str]:
     """Split script into sentences; strips eleven_v3 [tags]. Keeps '?'
     (question intonation reads better on screen), drops '.'/'!'/'…'."""
-    text = _TAG_RE.sub("", text or "")
+    text = _TAG_RE.sub("", strip_stage_directions(text))
     parts = re.split(r"(?<=[.!?…])\s+", text.strip())
     out = []
     for p in parts:
@@ -111,8 +118,10 @@ def pick_insert_gap(
     spans: list[tuple[float, float]], total: float,
 ) -> float | None:
     """Midpoint of the longest gap between speech spans whose midpoint
-    falls within 20%–85% of total; None if that gap is < 0.5s. This is
-    where the body take is split for cutaway inserts."""
+    falls within 20%–85% of total. Prefers a real pause (≥0.5s), but
+    ASMR whisper VO often has none at all (job#6: max gap ~0.2s) — then
+    fall back to the longest inter-phrase micro-gap (≥0.08s) so the
+    cutaways still ship instead of being silently dropped."""
     best: tuple[float, float] | None = None  # (length, midpoint)
     for (_, e1), (s2, _) in zip(spans, spans[1:]):
         length = s2 - e1
@@ -121,7 +130,7 @@ def pick_insert_gap(
             continue
         if best is None or length > best[0]:
             best = (length, mid)
-    if best is None or best[0] < 0.5:
+    if best is None or best[0] < 0.08:
         return None
     return best[1]
 

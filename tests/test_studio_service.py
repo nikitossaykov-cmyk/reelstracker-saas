@@ -303,6 +303,68 @@ def test_media_allowlist_covers_studio_keys(db_session, test_user):
     assert not _verify_key_in_db("u/7/studio/1/nonexistent.mp4", db_session)
 
 
+def test_api_create_with_cutaways_flag(auth_client, db_session, fake_r2):
+    r = auth_client.post(
+        "/api/studio/jobs/",
+        files={"product_images": ("p.jpg", JPEG, "image/jpeg")},
+        data={
+            "product_name": "X", "brand": "Y",
+            "price_rub": "1990", "dupe_price_rub": "16000",
+            "voice_style": "normal", "captions_enabled": "true",
+            "cutaways_enabled": "false",
+        },
+    )
+    assert r.status_code == 202, r.text
+    body = r.json()
+    assert body["cutaways_enabled"] is False
+    assert body["cap_clip_key"] is None
+    j = db_session.query(StudioJob).get(body["id"])
+    assert j.cutaways_enabled is False
+
+
+def test_api_retry_clears_cutaway_keys(auth_client, db_session, test_user, fake_r2):
+    j = StudioJob(
+        user_id=test_user.id, product_image_keys=["x"],
+        product_name="X", brand="Y",
+        price_rub=Decimal("1"), dupe_price_rub=Decimal("2"),
+        voice_style="normal", captions_enabled=True,
+        status=StudioStatus.FAILED, cost_usd=Decimal("0"),
+        cap_still_key="k/cs.jpg", spray_still_key="k/ss.jpg",
+        cap_clip_key="k/cc.mp4", spray_clip_key="k/sc.mp4",
+        created_at=datetime.utcnow(),
+    )
+    db_session.add(j)
+    db_session.commit()
+    r = auth_client.post(f"/api/studio/jobs/{j.id}/retry")
+    assert r.status_code == 200
+    body = r.json()
+    for f in ("cap_still_key", "spray_still_key", "cap_clip_key", "spray_clip_key"):
+        assert body[f] is None
+
+
+def test_media_allowlist_covers_cutaway_keys(db_session, test_user):
+    from app.api.media import _verify_key_in_db
+    j = StudioJob(
+        user_id=test_user.id, product_image_keys=["x"],
+        product_name="X", brand="Y",
+        price_rub=Decimal("1"), dupe_price_rub=Decimal("2"),
+        voice_style="normal", captions_enabled=True,
+        status=StudioStatus.READY, cost_usd=Decimal("0"),
+        cap_still_key="u/7/studio/2/cutaway-cap_off-a.jpg",
+        spray_still_key="u/7/studio/2/cutaway-spray-a.jpg",
+        cap_clip_key="u/7/studio/2/cutaway-cap_off-a.mp4",
+        spray_clip_key="u/7/studio/2/cutaway-spray-a.mp4",
+        created_at=datetime.utcnow(),
+    )
+    db_session.add(j)
+    db_session.commit()
+    for k in ("u/7/studio/2/cutaway-cap_off-a.jpg",
+              "u/7/studio/2/cutaway-spray-a.jpg",
+              "u/7/studio/2/cutaway-cap_off-a.mp4",
+              "u/7/studio/2/cutaway-spray-a.mp4"):
+        assert _verify_key_in_db(k, db_session)
+
+
 def test_api_script_autogen_passes_cutaways(auth_client, monkeypatch):
     import app.api.studio as api_mod
     seen = {}

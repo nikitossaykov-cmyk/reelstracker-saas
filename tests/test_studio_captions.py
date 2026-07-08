@@ -225,6 +225,32 @@ def test_cutaway_still_prompts():
         build_cutaway_still_prompt(kind="sniff", product_name="X", brand="Y")
 
 
+def test_persona_portrait_prompt():
+    from app.services.strategy_single_take.portrait import build_persona_prompt
+    keep = build_persona_prompt(
+        product_name="WHITE CHOCOLATE", brand="dose", asmr=False, look_prompt=None,
+    )
+    assert "SAME woman" in keep
+    assert "first reference image" in keep and "second reference image" in keep
+    assert "WHITE CHOCOLATE" in keep and "dose" in keep
+    # без look_prompt — образ фиксируется как в референсе
+    assert "exactly as in the first reference" in keep.lower()
+
+    look = build_persona_prompt(
+        product_name="WHITE CHOCOLATE", brand="dose", asmr=False,
+        look_prompt="белый топ, волосы собраны",
+    )
+    assert "белый топ, волосы собраны" in look
+    assert "change her look" in look.lower()
+    # лицо остаётся при любом образе
+    assert "SAME woman" in look
+
+    asmr = build_persona_prompt(
+        product_name="X", brand="Y", asmr=True, look_prompt=None,
+    )
+    assert "microphone" in asmr.lower()
+
+
 def test_cutaway_motion_prompts():
     from app.services.strategy_single_take.cutaways import MOTION_PROMPTS, NEGATIVE_PROMPT
     assert set(MOTION_PROMPTS) == {"cap_off", "spray"}

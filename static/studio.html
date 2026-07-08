@@ -69,6 +69,9 @@
     <label class="text-sm flex items-center gap-2">
       <input id="f-captions" type="checkbox" checked> субтитры (word-by-word)
     </label>
+    <label class="text-sm flex items-center gap-2">
+      <input id="f-cutaways" type="checkbox" checked> вставки-действия (открыть + пшик)
+    </label>
     <div>
       <label class="text-xs opacity-70">Hook-клип (опционально, mp4/mov)</label>
       <input id="f-hook" type="file" accept="video/*"
@@ -134,10 +137,11 @@ const STAGES = [
   ['portrait',  'Портрет'],
   ['voiceover', 'Озвучка'],
   ['lipsync',   'Липсинк'],
+  ['cutaways',  'Вставки'],
   ['assemble',  'Сборка'],
   ['judge',     'QC'],
 ];
-const ORDER = ['pending','portrait','voiceover','lipsync','assemble','judge','ready'];
+const ORDER = ['pending','portrait','voiceover','lipsync','cutaways','assemble','judge','ready'];
 
 function chips(j) {
   const idx = ORDER.indexOf(j.status);
@@ -145,7 +149,7 @@ function chips(j) {
     const kidx = ORDER.indexOf(key);
     let cls = 'chip opacity-50';
     if (j.status === 'failed') {
-      cls = kidx < idx || (j[key + '_key'] || (key === 'judge' && j.judge_score != null))
+      cls = kidx < idx || (j[key + '_key'] || (key === 'judge' && j.judge_score != null) || (key === 'cutaways' && j.cap_clip_key))
         ? 'chip chip-done' : 'chip chip-fail';
     } else if (j.status === 'ready' || kidx < idx) cls = 'chip chip-done';
     else if (kidx === idx) cls = 'chip chip-active';
@@ -217,6 +221,7 @@ async function genScript() {
         price_rub: +document.getElementById('f-price').value || 0,
         dupe_price_rub: +document.getElementById('f-dupe-price').value || 0,
         voice_style: document.querySelector('input[name=voice]:checked').value,
+        cutaways_enabled: document.getElementById('f-cutaways').checked,
       }),
     });
     const d = await r.json();
@@ -239,6 +244,7 @@ async function createJob() {
   fd.append('script_text', document.getElementById('f-script').value);
   fd.append('voice_style', document.querySelector('input[name=voice]:checked').value);
   fd.append('captions_enabled', document.getElementById('f-captions').checked);
+  fd.append('cutaways_enabled', document.getElementById('f-cutaways').checked);
   const hook = document.getElementById('f-hook').files[0];
   if (hook) fd.append('hook_video', hook);
 

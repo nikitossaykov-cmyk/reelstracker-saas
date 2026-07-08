@@ -20,6 +20,8 @@ VF_NORMALIZE = (
     "crop=720:1280,fps=30"
 )
 
+CUTAWAY_SECONDS = 1.2
+
 
 class AssembleError(RuntimeError):
     pass
@@ -44,11 +46,30 @@ def probe_duration(path: Path) -> float:
     return float(r.stdout.strip())
 
 
+def has_audio_stream(path: Path) -> bool:
+    r = subprocess.run(
+        [FFPROBE, "-v", "error", "-select_streams", "a",
+         "-show_entries", "stream=codec_type",
+         "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
+        capture_output=True, text=True,
+    )
+    return "audio" in r.stdout
+
+
+def normalize_clip_cmd(src: Path, dst: Path, *, has_audio: bool) -> list[str]:
+    cmd = [FFMPEG, "-y", "-v", "error", "-i", str(src)]
+    if not has_audio:
+        # Kling clips are silent — inject a null track so concat stays valid
+        cmd += ["-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
+                "-map", "0:v", "-map", "1:a", "-shortest"]
+    cmd += ["-vf", VF_NORMALIZE,
+            "-c:v", "libx264", "-preset", "fast", "-crf", "20",
+            "-c:a", "aac", "-ar", "44100", "-ac", "2", str(dst)]
+    return cmd
+
+
 def normalize_clip(src: Path, dst: Path) -> Path:
-    _run([FFMPEG, "-y", "-v", "error", "-i", str(src),
-          "-vf", VF_NORMALIZE,
-          "-c:v", "libx264", "-preset", "fast", "-crf", "20",
-          "-c:a", "aac", "-ar", "44100", "-ac", "2", str(dst)])
+    _run(normalize_clip_cmd(src, dst, has_audio=has_audio_stream(src)))
     return dst
 
 
@@ -60,6 +81,40 @@ def concat_clips(parts: list[Path], dst: Path) -> Path:
           "-i", str(lst),
           "-c:v", "libx264", "-preset", "fast", "-crf", "20",
           "-c:a", "aac", "-ar", "44100", "-ac", "2", str(dst)])
+    return dst
+
+
+def cut_clip_cmd(
+    src: Path, dst: Path, *, start: float, end: float | None = None,
+) -> list[str]:
+    cmd = [FFMPEG, "-y", "-v", "error", "-i", str(src), "-ss", str(start)]
+    if end is not None:
+        cmd += ["-to", str(end)]
+    cmd += ["-vf", VF_NORMALIZE,
+            "-c:v", "libx264", "-preset", "fast", "-crf", "20",
+            "-c:a", "aac", "-ar", "44100", "-ac", "2", str(dst)]
+    return cmd
+
+
+def cut_clip(src: Path, dst: Path, *, start: float, end: float | None = None) -> Path:
+    _run(cut_clip_cmd(src, dst, start=start, end=end))
+    return dst
+
+
+def still_to_clip_cmd(jpg: Path, dst: Path, *, seconds: float) -> list[str]:
+    return [FFMPEG, "-y", "-v", "error",
+            "-loop", "1", "-framerate", "30", "-i", str(jpg),
+            "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
+            "-t", str(seconds),
+            "-vf", VF_NORMALIZE,
+            "-c:v", "libx264", "-preset", "fast", "-crf", "20",
+            "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-ar", "44100", "-ac", "2", str(dst)]
+
+
+def still_to_clip(jpg: Path, dst: Path, *, seconds: float = CUTAWAY_SECONDS) -> Path:
+    """Static fallback when Kling animation failed but the still exists."""
+    _run(still_to_clip_cmd(jpg, dst, seconds=seconds))
     return dst
 
 

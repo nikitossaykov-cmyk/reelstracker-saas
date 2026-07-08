@@ -40,12 +40,17 @@ class StudioJobResponse(BaseModel):
     dupe_price_rub: float
     voice_style: str
     captions_enabled: bool
+    cutaways_enabled: bool
     script_text: Optional[str]
     hook_video_key: Optional[str]
     status: str
     portrait_key: Optional[str]
     voiceover_key: Optional[str]
     lipsync_key: Optional[str]
+    cap_still_key: Optional[str]
+    spray_still_key: Optional[str]
+    cap_clip_key: Optional[str]
+    spray_clip_key: Optional[str]
     output_key: Optional[str]
     judge_score: Optional[int]
     judge_report: Optional[dict]
@@ -64,12 +69,17 @@ class StudioJobResponse(BaseModel):
             dupe_price_rub=float(j.dupe_price_rub),
             voice_style=j.voice_style,
             captions_enabled=bool(j.captions_enabled),
+            cutaways_enabled=bool(j.cutaways_enabled),
             script_text=j.script_text,
             hook_video_key=j.hook_video_key,
             status=j.status,
             portrait_key=j.portrait_key,
             voiceover_key=j.voiceover_key,
             lipsync_key=j.lipsync_key,
+            cap_still_key=j.cap_still_key,
+            spray_still_key=j.spray_still_key,
+            cap_clip_key=j.cap_clip_key,
+            spray_clip_key=j.spray_clip_key,
             output_key=j.output_key,
             judge_score=j.judge_score,
             judge_report=j.judge_report,
@@ -90,6 +100,7 @@ class ScriptRequest(BaseModel):
     price_rub: float
     dupe_price_rub: float
     voice_style: str = "normal"
+    cutaways_enabled: bool = True
 
 
 def _get_owned(db: Session, user: User, jid: int) -> StudioJob:
@@ -133,6 +144,7 @@ async def create_job(
     script_text: Optional[str] = Form(None),
     voice_style: str = Form("normal"),
     captions_enabled: bool = Form(True),
+    cutaways_enabled: bool = Form(True),
     hook_video: Optional[UploadFile] = File(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -167,6 +179,7 @@ async def create_job(
             script_text=script_text,
             voice_style=voice_style,
             captions_enabled=captions_enabled,
+            cutaways_enabled=cutaways_enabled,
             hook_video=hook_pair,
         )
     except StudioValidationError as e:
@@ -200,6 +213,10 @@ def retry_job(
     j.portrait_key = None
     j.voiceover_key = None
     j.lipsync_key = None
+    j.cap_still_key = None
+    j.spray_still_key = None
+    j.cap_clip_key = None
+    j.spray_clip_key = None
     j.output_key = None
     j.judge_score = None
     j.judge_report = None
@@ -224,6 +241,7 @@ def make_script(
             price_rub=req.price_rub,
             dupe_price_rub=req.dupe_price_rub,
             voice_style=req.voice_style,
+            cutaways=req.cutaways_enabled,
             openai_api_key=openai_key,
         )
     except Exception as e:

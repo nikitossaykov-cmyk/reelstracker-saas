@@ -142,6 +142,7 @@ def test_studio_script_prompt_asmr_vs_normal():
     p = build_studio_script_prompt(
         product_name="WHITE CHOCOLATE", brand="Richard Maison",
         price_rub=1990.0, dupe_price_rub=16000.0, voice_style="asmr",
+        cutaways=False,
     )
     assert "шёпот" in p.lower()
     assert "тысяча девятьсот девяносто рублей" in p
@@ -149,8 +150,120 @@ def test_studio_script_prompt_asmr_vs_normal():
     p2 = build_studio_script_prompt(
         product_name="WHITE CHOCOLATE", brand="Richard Maison",
         price_rub=1990.0, dupe_price_rub=16000.0, voice_style="normal",
+        cutaways=False,
     )
     assert "шёпот" not in p2.lower()
+
+
+def test_studio_script_prompt_cutaways_flag():
+    from app.services.strategy_single_take.script import build_studio_script_prompt
+    kw = dict(
+        product_name="WHITE CHOCOLATE", brand="Richard Maison",
+        price_rub=1990.0, dupe_price_rub=16000.0, voice_style="asmr",
+    )
+    p_off = build_studio_script_prompt(**kw, cutaways=False)
+    assert "НЕ совершает действий" in p_off       # PR #68 full ban intact
+    assert "обещани" in p_off.lower()
+
+    p_on = build_studio_script_prompt(**kw, cutaways=True)
+    assert "Сейчас открою" in p_on                # exactly one promise allowed
+    assert "длинная пауза" in p_on.lower()        # explicit long pause demanded
+    assert "НЕ совершает действий" not in p_on
+
+
+def test_pick_insert_gap_dominant_gap():
+    from app.services.strategy_single_take.captions import pick_insert_gap
+    # gaps: 5.0-7.5 (2.5s, midpoint 6.25 = 62.5% of 10) and 8.5-9.0 (0.5s)
+    spans = [(0.0, 5.0), (7.5, 8.5), (9.0, 10.0)]
+    assert pick_insert_gap(spans, total=10.0) == pytest.approx(6.25)
+
+
+def test_pick_insert_gap_ignores_gap_outside_window():
+    from app.services.strategy_single_take.captions import pick_insert_gap
+    # only gap 0.5-1.5: midpoint 1.0 = 10% of 10 → before 20% window
+    assert pick_insert_gap([(0.0, 0.5), (1.5, 10.0)], total=10.0) is None
+    # only gap 9.0-9.8: midpoint 9.4 = 94% → after 85% window
+    assert pick_insert_gap([(0.0, 9.0), (9.8, 10.0)], total=10.0) is None
+
+
+def test_pick_insert_gap_too_short_or_none():
+    from app.services.strategy_single_take.captions import pick_insert_gap
+    # longest in-window gap is 0.4s < 0.5s min
+    assert pick_insert_gap([(0.0, 5.0), (5.4, 10.0)], total=10.0) is None
+    # single span → no gaps at all
+    assert pick_insert_gap([(0.0, 10.0)], total=10.0) is None
+    assert pick_insert_gap([], total=10.0) is None
+
+
+def test_shift_captions():
+    from app.services.strategy_single_take.captions import shift_captions
+    aligned = [(0.0, 2.0, "до"), (3.0, 5.0, "после"), (6.0, 8.0, "хвост")]
+    out = shift_captions(aligned, split_at=2.5, inserts_seconds=2.4)
+    assert out == [
+        (0.0, 2.0, "до"),
+        (3.0 + 2.4, 5.0 + 2.4, "после"),
+        (6.0 + 2.4, 8.0 + 2.4, "хвост"),
+    ]
+
+
+def test_cutaway_still_prompts():
+    from app.services.strategy_single_take.cutaways import build_cutaway_still_prompt
+    cap = build_cutaway_still_prompt(
+        kind="cap_off", product_name="WHITE CHOCOLATE", brand="dose",
+    )
+    assert "SAME woman" in cap
+    assert "second reference image" in cap
+    assert "WHITE CHOCOLATE" in cap and "dose" in cap
+    assert "lifting" in cap.lower() and "cap" in cap.lower()
+    spray = build_cutaway_still_prompt(
+        kind="spray", product_name="WHITE CHOCOLATE", brand="dose",
+    )
+    assert "mist" in spray.lower()
+    assert "pump" in spray.lower()
+    with pytest.raises(ValueError):
+        build_cutaway_still_prompt(kind="sniff", product_name="X", brand="Y")
+
+
+def test_cutaway_motion_prompts():
+    from app.services.strategy_single_take.cutaways import MOTION_PROMPTS, NEGATIVE_PROMPT
+    assert set(MOTION_PROMPTS) == {"cap_off", "spray"}
+    assert "mist" in MOTION_PROMPTS["spray"].lower()
+    assert "drinking" in NEGATIVE_PROMPT
+    assert "kissing" in NEGATIVE_PROMPT
+
+
+def test_cut_clip_cmd():
+    from pathlib import Path
+    from app.services.strategy_single_take.assemble import VF_NORMALIZE, cut_clip_cmd
+    cmd = cut_clip_cmd(Path("in.mp4"), Path("out.mp4"), start=0.0, end=6.25)
+    s = " ".join(cmd)
+    assert "-ss 0.0" in s and "-to 6.25" in s
+    assert VF_NORMALIZE in s          # re-encode keeps concat uniform
+    # open-ended tail cut
+    cmd2 = cut_clip_cmd(Path("in.mp4"), Path("out.mp4"), start=6.25)
+    s2 = " ".join(cmd2)
+    assert "-ss 6.25" in s2 and "-to" not in s2
+
+
+def test_still_to_clip_cmd():
+    from pathlib import Path
+    from app.services.strategy_single_take.assemble import CUTAWAY_SECONDS, still_to_clip_cmd
+    assert CUTAWAY_SECONDS == 1.2
+    cmd = still_to_clip_cmd(Path("s.jpg"), Path("c.mp4"), seconds=1.2)
+    s = " ".join(cmd)
+    assert "-loop 1" in s
+    assert "anullsrc" in s            # silent audio track
+    assert "-t 1.2" in s
+
+
+def test_normalize_clip_cmd_injects_silent_audio():
+    from pathlib import Path
+    from app.services.strategy_single_take.assemble import normalize_clip_cmd
+    with_audio = " ".join(normalize_clip_cmd(Path("a.mp4"), Path("b.mp4"), has_audio=True))
+    without = " ".join(normalize_clip_cmd(Path("a.mp4"), Path("b.mp4"), has_audio=False))
+    assert "anullsrc" not in with_audio
+    assert "anullsrc" in without      # Kling clips are silent
+    assert "-shortest" in without
 
 
 def test_polish_filter_hook_untouched_body_sped_up():

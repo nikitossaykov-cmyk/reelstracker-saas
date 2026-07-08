@@ -358,6 +358,12 @@ def run_lightweight_migrations():
         # new jobs write only product_image_keys.
         "ALTER TABLE makeugc_jobs ADD COLUMN IF NOT EXISTS product_image_keys JSON NOT NULL DEFAULT '[]'::json",
         "ALTER TABLE makeugc_jobs ALTER COLUMN product_image_key DROP NOT NULL",
+        # Studio cutaways — action inserts (cap-off + spray)
+        "ALTER TABLE studio_jobs ADD COLUMN IF NOT EXISTS cutaways_enabled BOOLEAN NOT NULL DEFAULT TRUE",
+        "ALTER TABLE studio_jobs ADD COLUMN IF NOT EXISTS cap_still_key TEXT",
+        "ALTER TABLE studio_jobs ADD COLUMN IF NOT EXISTS spray_still_key TEXT",
+        "ALTER TABLE studio_jobs ADD COLUMN IF NOT EXISTS cap_clip_key TEXT",
+        "ALTER TABLE studio_jobs ADD COLUMN IF NOT EXISTS spray_clip_key TEXT",
     ]
     # Enum-расширения нужно делать в AUTOCOMMIT (Postgres не разрешает
     # ALTER TYPE ... ADD VALUE внутри транзакции).

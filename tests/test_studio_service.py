@@ -119,6 +119,7 @@ def _make_pending_job(db_session, test_user, fake_r2_worker, **over):
         script_text="Я это заказала. Ну что?",
         voice_style="asmr",
         captions_enabled=False,   # skip captions → no silencedetect in unit test
+        cutaways_enabled=False,   # tests opt in explicitly via **over
         status=StudioStatus.PENDING,
         cost_usd=Decimal("0"),
         created_at=datetime.utcnow(),
@@ -224,6 +225,85 @@ def test_worker_stage_failure_marks_failed(
 
     assert j.status == StudioStatus.FAILED
     assert "portrait" in j.error_message
+
+
+def _patch_pre_cutaway_stages(monkeypatch, w):
+    monkeypatch.setattr(w, "generate_studio_portrait", lambda **kw: (b"p", 0.15))
+    monkeypatch.setattr(w, "generate_voiceover_v3", lambda **kw: b"a")
+    monkeypatch.setattr(w, "generate_lipsync", lambda **kw: (b"v", 0.74))
+
+    def fake_assemble(job, tmp, lipsync_path, voiceover_path, hook_path):
+        out = tmp / "final.mp4"
+        out.write_bytes(b"f")
+        return out
+    monkeypatch.setattr(w, "_assemble", fake_assemble)
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "e-key")
+    monkeypatch.setenv("MAKEUGC_DEFAULT_VOICE_ID", "v-id")
+    monkeypatch.setenv("REPLICATE_API_TOKEN", "r-key")
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+
+
+def test_worker_cutaways_happy_path(db_session, test_user, fake_r2_worker, monkeypatch):
+    import app.workers.studio_worker as w
+    _patch_pre_cutaway_stages(monkeypatch, w)
+    monkeypatch.setattr(
+        w, "generate_cutaway_still", lambda **kw: (b"still-" + kw["kind"].encode(), 0.15),
+    )
+    monkeypatch.setattr(
+        w, "animate_cutaway", lambda **kw: (b"clip-" + kw["kind"].encode(), 0.25),
+    )
+    j = _make_pending_job(db_session, test_user, fake_r2_worker, cutaways_enabled=True)
+    w.process_job(db_session, j, test_user)
+
+    assert j.status == StudioStatus.READY
+    assert j.cap_still_key and j.spray_still_key
+    assert j.cap_clip_key and j.spray_clip_key
+    assert fake_r2_worker.blobs[j.cap_clip_key] == b"clip-cap_off"
+    assert fake_r2_worker.blobs[j.spray_clip_key] == b"clip-spray"
+    # 0.15 portrait + 0.74 lipsync + tts + 2×(0.15+0.25)
+    assert float(j.cost_usd) == pytest.approx(0.15 + 0.74 + 0.0072 + 0.80, abs=0.01)
+
+
+def test_worker_cutaways_disabled_skips_stage(db_session, test_user, fake_r2_worker, monkeypatch):
+    import app.workers.studio_worker as w
+    _patch_pre_cutaway_stages(monkeypatch, w)
+
+    def boom(**kw):
+        raise AssertionError("cutaways must not run")
+    monkeypatch.setattr(w, "generate_cutaway_still", boom)
+    j = _make_pending_job(db_session, test_user, fake_r2_worker, cutaways_enabled=False)
+    w.process_job(db_session, j, test_user)
+    assert j.status == StudioStatus.READY
+    assert j.cap_still_key is None and j.cap_clip_key is None
+
+
+def test_worker_cutaway_failure_is_non_blocking(db_session, test_user, fake_r2_worker, monkeypatch):
+    import app.workers.studio_worker as w
+    _patch_pre_cutaway_stages(monkeypatch, w)
+
+    def boom(**kw):
+        raise RuntimeError("kling упал")
+    monkeypatch.setattr(w, "generate_cutaway_still", boom)
+    monkeypatch.setattr(w, "animate_cutaway", boom)
+    j = _make_pending_job(db_session, test_user, fake_r2_worker, cutaways_enabled=True)
+    w.process_job(db_session, j, test_user)
+    assert j.status == StudioStatus.READY      # reel ships without inserts
+    assert j.cap_clip_key is None and j.spray_clip_key is None
+
+
+def test_worker_cutaway_animation_failure_keeps_still(db_session, test_user, fake_r2_worker, monkeypatch):
+    import app.workers.studio_worker as w
+    _patch_pre_cutaway_stages(monkeypatch, w)
+    monkeypatch.setattr(w, "generate_cutaway_still", lambda **kw: (b"still", 0.15))
+
+    def boom(**kw):
+        raise RuntimeError("kling упал")
+    monkeypatch.setattr(w, "animate_cutaway", boom)
+    j = _make_pending_job(db_session, test_user, fake_r2_worker, cutaways_enabled=True)
+    w.process_job(db_session, j, test_user)
+    assert j.status == StudioStatus.READY
+    assert j.cap_still_key and j.spray_still_key   # stills survive for static fallback
+    assert j.cap_clip_key is None
 
 
 def test_api_create_and_list_and_retry(auth_client, db_session, test_user, fake_r2):

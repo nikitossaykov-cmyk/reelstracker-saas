@@ -48,6 +48,11 @@ from app.services.strategy_single_take.captions import (
     speech_spans,
     split_sentences,
 )
+from app.services.strategy_single_take.cutaways import (
+    KINDS as CUTAWAY_KINDS,
+    animate_cutaway,
+    generate_cutaway_still,
+)
 from app.services.strategy_single_take.judge import judge_video
 from app.services.strategy_single_take.portrait import generate_studio_portrait
 from app.services.strategy_single_take.voiceover import generate_voiceover_v3
@@ -226,6 +231,50 @@ def process_job(db: Session, j: StudioJob, user: User) -> None:
         r2.upload_bytes(key, video_blob, content_type="video/mp4")
         j.lipsync_key = key
         _add_cost(db, j, lip_cost)
+
+    # --- CUTAWAYS (optional, non-blocking — a reel without inserts still ships) ---
+    if j.cutaways_enabled:
+        _mark(db, j, StudioStatus.CUTAWAYS)
+        for kind in CUTAWAY_KINDS:  # ("cap_off", "spray")
+            clip_attr = "cap_clip_key" if kind == "cap_off" else "spray_clip_key"
+            still_attr = "cap_still_key" if kind == "cap_off" else "spray_still_key"
+            if getattr(j, clip_attr):
+                continue  # resume-safe
+            try:
+                if not getattr(j, still_attr):
+                    result, cost = generate_cutaway_still(
+                        portrait_bytes=_get_blob(r2, j.portrait_key),
+                        product_bytes=product_bytes,
+                        kind=kind,
+                        product_name=j.product_name,
+                        brand=j.brand,
+                        replicate_api_key=replicate_key,
+                    )
+                    blob = _to_bytes(result, timeout=120)
+                    key = (f"users/{j.user_id}/studio/{j.id}/"
+                           f"cutaway-{kind}-{uuid.uuid4().hex[:6]}.jpg")
+                    r2.upload_bytes(key, blob, content_type="image/jpeg")
+                    setattr(j, still_attr, key)
+                    _add_cost(db, j, cost)
+                result, cost = animate_cutaway(
+                    still_bytes=_get_blob(r2, getattr(j, still_attr)),
+                    kind=kind,
+                    replicate_api_key=replicate_key,
+                )
+                blob = _to_bytes(result, timeout=300)
+                key = (f"users/{j.user_id}/studio/{j.id}/"
+                       f"cutaway-{kind}-{uuid.uuid4().hex[:6]}.mp4")
+                r2.upload_bytes(key, blob, content_type="video/mp4")
+                setattr(j, clip_attr, key)
+                _add_cost(db, j, cost)
+            except ReplicateTransientError as e:
+                log.warning("studio %s transient on cutaway %s: %s", j.id, kind, e)
+                raise
+            except Exception as e:
+                # non-blocking: still (if any) stays for static fallback
+                log.warning("studio %s cutaway %s failed (non-blocking): %s",
+                            j.id, kind, e)
+                db.rollback()
 
     # --- ASSEMBLE + JUDGE (same tmpdir) ---
     _mark(db, j, StudioStatus.ASSEMBLE)

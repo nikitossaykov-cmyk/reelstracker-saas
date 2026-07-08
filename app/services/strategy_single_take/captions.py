@@ -114,25 +114,44 @@ def align_sentences(
     return out
 
 
+# part 1 of a cutaways script must end with a promise phrase
+# («Сейчас открою…» / «Давайте попробуем…» per the script prompt)
+_PROMISE_RE = re.compile(r"сейчас\s+откро|попробу", re.IGNORECASE)
+
+
+def find_promise_end(
+    aligned: list[tuple[float, float, str]],
+) -> float | None:
+    """End time of the promise sentence («Сейчас открою…»), if any."""
+    for _, end, txt in aligned:
+        if _PROMISE_RE.search(txt):
+            return end
+    return None
+
+
 def pick_insert_gap(
     spans: list[tuple[float, float]], total: float,
+    anchor: float | None = None,
 ) -> float | None:
-    """Midpoint of the longest gap between speech spans whose midpoint
-    falls within 20%–85% of total. Prefers a real pause (≥0.5s), but
-    ASMR whisper VO often has none at all (job#6: max gap ~0.2s) — then
-    fall back to the longest inter-phrase micro-gap (≥0.08s) so the
-    cutaways still ship instead of being silently dropped."""
-    best: tuple[float, float] | None = None  # (length, midpoint)
+    """Midpoint of a gap (≥0.08s) between speech spans. With an anchor
+    (end of the promise sentence) — the gap nearest to it (job#7: the
+    longest gap fell mid-script, way before the promise). Without —
+    the longest gap whose midpoint is within 20%–85% of total; ASMR
+    whisper has no ≥0.5s pause at all (job#6), so any inter-phrase
+    micro-gap qualifies rather than silently dropping the cutaways."""
+    cands: list[tuple[float, float]] = []  # (length, midpoint)
     for (_, e1), (s2, _) in zip(spans, spans[1:]):
         length = s2 - e1
-        mid = (e1 + s2) / 2
-        if not (0.2 * total <= mid <= 0.85 * total):
-            continue
-        if best is None or length > best[0]:
-            best = (length, mid)
-    if best is None or best[0] < 0.08:
+        if length >= 0.08:
+            cands.append((length, (e1 + s2) / 2))
+    if anchor is not None:
+        near = [c for c in cands if 0.1 * total <= c[1] <= 0.9 * total]
+        if near:
+            return min(near, key=lambda c: abs(c[1] - anchor))[1]
+    windowed = [c for c in cands if 0.2 * total <= c[1] <= 0.85 * total]
+    if not windowed:
         return None
-    return best[1]
+    return max(windowed, key=lambda c: c[0])[1]
 
 
 def shift_captions(

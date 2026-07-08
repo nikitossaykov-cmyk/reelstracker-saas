@@ -229,6 +229,38 @@ def test_pick_insert_gap_too_short_or_none():
     assert pick_insert_gap([], total=10.0) is None
 
 
+def test_pick_insert_gap_anchor_beats_longest():
+    from app.services.strategy_single_take.captions import pick_insert_gap
+    # job#7: longest gap fell mid-script (7.99s), but the promise phrase
+    # ends near 15s — anchored pick must choose the gap nearest the anchor
+    spans = [(0.0, 4.0), (4.3, 8.0), (8.15, 15.0), (15.12, 20.0)]
+    # longest gap mid=4.15, anchor 15.0 → nearest gap mid=15.06
+    assert pick_insert_gap(spans, total=20.0, anchor=15.0) == pytest.approx(15.06)
+    # без якоря — прежнее поведение (самый длинный)
+    assert pick_insert_gap(spans, total=20.0) == pytest.approx(4.15)
+
+
+def test_pick_insert_gap_anchor_ignores_tiny_gaps():
+    from app.services.strategy_single_take.captions import pick_insert_gap
+    # gap at 10.02 is closest to anchor but <0.08s → take next nearest valid
+    spans = [(0.0, 5.0), (5.3, 10.0), (10.04, 16.0), (16.2, 20.0)]
+    assert pick_insert_gap(spans, total=20.0, anchor=10.0) == pytest.approx(5.15)
+
+
+def test_find_promise_end():
+    from app.services.strategy_single_take.captions import find_promise_end
+    aligned = [
+        (0.0, 5.0, "Это аналог дорогого аромата"),
+        (5.2, 8.0, "Сейчас открою"),
+        (8.3, 12.0, "Какой же он сладкий"),
+    ]
+    assert find_promise_end(aligned) == pytest.approx(8.0)
+    aligned2 = [(0.0, 4.0, "Цена смешная"), (4.2, 7.0, "Давайте попробуем")]
+    assert find_promise_end(aligned2) == pytest.approx(7.0)
+    assert find_promise_end([(0.0, 4.0, "Просто реакция на запах")]) is None
+    assert find_promise_end([]) is None
+
+
 def test_shift_captions():
     from app.services.strategy_single_take.captions import shift_captions
     aligned = [(0.0, 2.0, "до"), (3.0, 5.0, "после"), (6.0, 8.0, "хвост")]

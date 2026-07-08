@@ -47,6 +47,7 @@ from app.services.strategy_single_take.captions import (
     SILENCE_NORMAL,
     align_sentences,
     build_ass,
+    find_promise_end,
     parse_silencedetect,
     pick_insert_gap,
     shift_captions,
@@ -132,8 +133,11 @@ def _assemble(
     inserts_seconds = 0.0
     parts: list[Path] = [body]
     if insert_paths:
-        split_at = pick_insert_gap(spans, vo_total)
-        log.info("studio %s cutaway split_at=%s (spans=%d)", j.id, split_at, len(spans))
+        aligned_vo = align_sentences(split_sentences(j.script_text or ""), spans)
+        anchor = find_promise_end(aligned_vo)
+        split_at = pick_insert_gap(spans, vo_total, anchor=anchor)
+        log.info("studio %s cutaway split_at=%s anchor=%s (spans=%d)",
+                 j.id, split_at, anchor, len(spans))
     if split_at is not None:
         body_a = cut_clip(body, tmp / "body_a.mp4", start=0.0, end=split_at)
         body_b = cut_clip(body, tmp / "body_b.mp4", start=split_at)

@@ -214,6 +214,40 @@ def test_cutaway_motion_prompts():
     assert "kissing" in NEGATIVE_PROMPT
 
 
+def test_cut_clip_cmd():
+    from pathlib import Path
+    from app.services.strategy_single_take.assemble import VF_NORMALIZE, cut_clip_cmd
+    cmd = cut_clip_cmd(Path("in.mp4"), Path("out.mp4"), start=0.0, end=6.25)
+    s = " ".join(cmd)
+    assert "-ss 0.0" in s and "-to 6.25" in s
+    assert VF_NORMALIZE in s          # re-encode keeps concat uniform
+    # open-ended tail cut
+    cmd2 = cut_clip_cmd(Path("in.mp4"), Path("out.mp4"), start=6.25)
+    s2 = " ".join(cmd2)
+    assert "-ss 6.25" in s2 and "-to" not in s2
+
+
+def test_still_to_clip_cmd():
+    from pathlib import Path
+    from app.services.strategy_single_take.assemble import CUTAWAY_SECONDS, still_to_clip_cmd
+    assert CUTAWAY_SECONDS == 1.2
+    cmd = still_to_clip_cmd(Path("s.jpg"), Path("c.mp4"), seconds=1.2)
+    s = " ".join(cmd)
+    assert "-loop 1" in s
+    assert "anullsrc" in s            # silent audio track
+    assert "-t 1.2" in s
+
+
+def test_normalize_clip_cmd_injects_silent_audio():
+    from pathlib import Path
+    from app.services.strategy_single_take.assemble import normalize_clip_cmd
+    with_audio = " ".join(normalize_clip_cmd(Path("a.mp4"), Path("b.mp4"), has_audio=True))
+    without = " ".join(normalize_clip_cmd(Path("a.mp4"), Path("b.mp4"), has_audio=False))
+    assert "anullsrc" not in with_audio
+    assert "anullsrc" in without      # Kling clips are silent
+    assert "-shortest" in without
+
+
 def test_polish_filter_hook_untouched_body_sped_up():
     from app.services.strategy_single_take.assemble import build_polish_filter
     fc = build_polish_filter(hook_seconds=3.204)

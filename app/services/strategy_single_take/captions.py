@@ -107,6 +107,39 @@ def align_sentences(
     return out
 
 
+def pick_insert_gap(
+    spans: list[tuple[float, float]], total: float,
+) -> float | None:
+    """Midpoint of the longest gap between speech spans whose midpoint
+    falls within 20%–85% of total; None if that gap is < 0.5s. This is
+    where the body take is split for cutaway inserts."""
+    best: tuple[float, float] | None = None  # (length, midpoint)
+    for (_, e1), (s2, _) in zip(spans, spans[1:]):
+        length = s2 - e1
+        mid = (e1 + s2) / 2
+        if not (0.2 * total <= mid <= 0.85 * total):
+            continue
+        if best is None or length > best[0]:
+            best = (length, mid)
+    if best is None or best[0] < 0.5:
+        return None
+    return best[1]
+
+
+def shift_captions(
+    aligned: list[tuple[float, float, str]],
+    split_at: float,
+    inserts_seconds: float,
+) -> list[tuple[float, float, str]]:
+    """Shift sentences that start at/after the split right by the total
+    insert duration (inserts are pushed into the timeline at split_at)."""
+    return [
+        (s + inserts_seconds, e + inserts_seconds, t) if s >= split_at
+        else (s, e, t)
+        for s, e, t in aligned
+    ]
+
+
 def _ts(t: float) -> str:
     h = int(t // 3600)
     m = int(t % 3600 // 60)

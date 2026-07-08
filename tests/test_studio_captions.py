@@ -153,6 +153,41 @@ def test_studio_script_prompt_asmr_vs_normal():
     assert "шёпот" not in p2.lower()
 
 
+def test_pick_insert_gap_dominant_gap():
+    from app.services.strategy_single_take.captions import pick_insert_gap
+    # gaps: 5.0-7.5 (2.5s, midpoint 6.25 = 62.5% of 10) and 8.5-9.0 (0.5s)
+    spans = [(0.0, 5.0), (7.5, 8.5), (9.0, 10.0)]
+    assert pick_insert_gap(spans, total=10.0) == pytest.approx(6.25)
+
+
+def test_pick_insert_gap_ignores_gap_outside_window():
+    from app.services.strategy_single_take.captions import pick_insert_gap
+    # only gap 0.5-1.5: midpoint 1.0 = 10% of 10 → before 20% window
+    assert pick_insert_gap([(0.0, 0.5), (1.5, 10.0)], total=10.0) is None
+    # only gap 9.0-9.8: midpoint 9.4 = 94% → after 85% window
+    assert pick_insert_gap([(0.0, 9.0), (9.8, 10.0)], total=10.0) is None
+
+
+def test_pick_insert_gap_too_short_or_none():
+    from app.services.strategy_single_take.captions import pick_insert_gap
+    # longest in-window gap is 0.4s < 0.5s min
+    assert pick_insert_gap([(0.0, 5.0), (5.4, 10.0)], total=10.0) is None
+    # single span → no gaps at all
+    assert pick_insert_gap([(0.0, 10.0)], total=10.0) is None
+    assert pick_insert_gap([], total=10.0) is None
+
+
+def test_shift_captions():
+    from app.services.strategy_single_take.captions import shift_captions
+    aligned = [(0.0, 2.0, "до"), (3.0, 5.0, "после"), (6.0, 8.0, "хвост")]
+    out = shift_captions(aligned, split_at=2.5, inserts_seconds=2.4)
+    assert out == [
+        (0.0, 2.0, "до"),
+        (3.0 + 2.4, 5.0 + 2.4, "после"),
+        (6.0 + 2.4, 8.0 + 2.4, "хвост"),
+    ]
+
+
 def test_cutaway_still_prompts():
     from app.services.strategy_single_take.cutaways import build_cutaway_still_prompt
     cap = build_cutaway_still_prompt(

@@ -572,6 +572,29 @@ def test_studio_job_cutaway_columns(db_session, test_user):
     assert StudioStatus.CUTAWAYS == "cutaways"
 
 
+def test_studio_persona_columns(db_session, test_user):
+    assert test_user.studio_persona_key is None
+    test_user.studio_persona_key = "users/1/studio/4/portrait-abc.jpg"
+    j = StudioJob(
+        user_id=test_user.id,
+        product_image_keys=["k"],
+        product_name="X", brand="Y",
+        price_rub=Decimal("1"), dupe_price_rub=Decimal("2"),
+        voice_style="normal", captions_enabled=True,
+        look_prompt="белый топ",
+        status=StudioStatus.PENDING,
+        cost_usd=Decimal("0"),
+        created_at=datetime.utcnow(),
+    )
+    db_session.add(j)
+    db_session.commit()
+    db_session.refresh(j)
+    db_session.refresh(test_user)
+    assert j.use_persona is True               # python default
+    assert j.look_prompt == "белый топ"
+    assert test_user.studio_persona_key == "users/1/studio/4/portrait-abc.jpg"
+
+
 def test_api_script_autogen(auth_client, monkeypatch):
     import app.api.studio as api_mod
     monkeypatch.setattr(

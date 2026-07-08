@@ -364,6 +364,10 @@ def run_lightweight_migrations():
         "ALTER TABLE studio_jobs ADD COLUMN IF NOT EXISTS spray_still_key TEXT",
         "ALTER TABLE studio_jobs ADD COLUMN IF NOT EXISTS cap_clip_key TEXT",
         "ALTER TABLE studio_jobs ADD COLUMN IF NOT EXISTS spray_clip_key TEXT",
+        # Studio persona — постоянная девушка (identity-референс портрета)
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS studio_persona_key VARCHAR(512)",
+        "ALTER TABLE studio_jobs ADD COLUMN IF NOT EXISTS use_persona BOOLEAN NOT NULL DEFAULT TRUE",
+        "ALTER TABLE studio_jobs ADD COLUMN IF NOT EXISTS look_prompt TEXT",
     ]
     # Enum-расширения нужно делать в AUTOCOMMIT (Postgres не разрешает
     # ALTER TYPE ... ADD VALUE внутри транзакции).

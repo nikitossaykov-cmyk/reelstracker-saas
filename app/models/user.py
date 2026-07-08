@@ -51,6 +51,10 @@ class User(Base):
     openai_api_key = Column(String(255), nullable=True)
     replicate_api_key = Column(String(255), nullable=True)
 
+    # Studio: R2-ключ канонического портрета «постоянной девушки».
+    # Обновляется явным сохранением или job'ом со сменой образа.
+    studio_persona_key = Column(String(512), nullable=True)
+
     # MakeUGC: counter for chars rendered via the SHARED ElevenLabs key.
     # Reset to 0 at the start of each calendar month; enforced by the
     # makeugc_worker before every TTS call. Per-user voice cloning quotas

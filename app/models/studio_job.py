@@ -51,6 +51,8 @@ class StudioJob(Base):
     captions_enabled = Column(Boolean, nullable=False, default=True)
     hook_video_key = Column(Text, nullable=True)
     cutaways_enabled = Column(Boolean, nullable=False, default=True)
+    use_persona = Column(Boolean, nullable=False, default=True)
+    look_prompt = Column(Text, nullable=True)
 
     # Stage outputs
     portrait_key = Column(Text, nullable=True)

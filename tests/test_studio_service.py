@@ -303,6 +303,28 @@ def test_media_allowlist_covers_studio_keys(db_session, test_user):
     assert not _verify_key_in_db("u/7/studio/1/nonexistent.mp4", db_session)
 
 
+def test_studio_job_cutaway_columns(db_session, test_user):
+    j = StudioJob(
+        user_id=test_user.id,
+        product_image_keys=["k"],
+        product_name="X", brand="Y",
+        price_rub=Decimal("1"), dupe_price_rub=Decimal("2"),
+        voice_style="normal", captions_enabled=True,
+        status=StudioStatus.CUTAWAYS,
+        cost_usd=Decimal("0"),
+        created_at=datetime.utcnow(),
+    )
+    db_session.add(j)
+    db_session.commit()
+    db_session.refresh(j)
+    assert j.cutaways_enabled is True          # server/python default
+    assert j.cap_still_key is None
+    assert j.spray_still_key is None
+    assert j.cap_clip_key is None
+    assert j.spray_clip_key is None
+    assert StudioStatus.CUTAWAYS == "cutaways"
+
+
 def test_api_script_autogen(auth_client, monkeypatch):
     import app.api.studio as api_mod
     monkeypatch.setattr(

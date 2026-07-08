@@ -25,6 +25,7 @@ class StudioStatus(str, enum.Enum):
     PORTRAIT = "portrait"
     VOICEOVER = "voiceover"
     LIPSYNC = "lipsync"
+    CUTAWAYS = "cutaways"
     ASSEMBLE = "assemble"
     JUDGE = "judge"
     READY = "ready"
@@ -49,11 +50,16 @@ class StudioJob(Base):
     voice_style = Column(String(16), nullable=False, default="normal")  # normal|asmr
     captions_enabled = Column(Boolean, nullable=False, default=True)
     hook_video_key = Column(Text, nullable=True)
+    cutaways_enabled = Column(Boolean, nullable=False, default=True)
 
     # Stage outputs
     portrait_key = Column(Text, nullable=True)
     voiceover_key = Column(Text, nullable=True)
     lipsync_key = Column(Text, nullable=True)
+    cap_still_key = Column(Text, nullable=True)
+    spray_still_key = Column(Text, nullable=True)
+    cap_clip_key = Column(Text, nullable=True)
+    spray_clip_key = Column(Text, nullable=True)
     output_key = Column(Text, nullable=True)
     judge_score = Column(Integer, nullable=True)
     judge_report = Column(JSON, nullable=True)

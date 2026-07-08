@@ -167,7 +167,7 @@ def test_studio_script_prompt_cutaways_flag():
 
     p_on = build_studio_script_prompt(**kw, cutaways=True)
     assert "Сейчас открою" in p_on                # exactly one promise allowed
-    assert "паузу" in p_on.lower()                # explicit long pause demanded
+    assert "длинная пауза" in p_on.lower()        # explicit long pause demanded
     assert "НЕ совершает действий" not in p_on
 
 

@@ -142,6 +142,7 @@ def test_studio_script_prompt_asmr_vs_normal():
     p = build_studio_script_prompt(
         product_name="WHITE CHOCOLATE", brand="Richard Maison",
         price_rub=1990.0, dupe_price_rub=16000.0, voice_style="asmr",
+        cutaways=False,
     )
     assert "шёпот" in p.lower()
     assert "тысяча девятьсот девяносто рублей" in p
@@ -149,8 +150,25 @@ def test_studio_script_prompt_asmr_vs_normal():
     p2 = build_studio_script_prompt(
         product_name="WHITE CHOCOLATE", brand="Richard Maison",
         price_rub=1990.0, dupe_price_rub=16000.0, voice_style="normal",
+        cutaways=False,
     )
     assert "шёпот" not in p2.lower()
+
+
+def test_studio_script_prompt_cutaways_flag():
+    from app.services.strategy_single_take.script import build_studio_script_prompt
+    kw = dict(
+        product_name="WHITE CHOCOLATE", brand="Richard Maison",
+        price_rub=1990.0, dupe_price_rub=16000.0, voice_style="asmr",
+    )
+    p_off = build_studio_script_prompt(**kw, cutaways=False)
+    assert "НЕ совершает действий" in p_off       # PR #68 full ban intact
+    assert "обещани" in p_off.lower()
+
+    p_on = build_studio_script_prompt(**kw, cutaways=True)
+    assert "Сейчас открою" in p_on                # exactly one promise allowed
+    assert "паузу" in p_on.lower()                # explicit long pause demanded
+    assert "НЕ совершает действий" not in p_on
 
 
 def test_pick_insert_gap_dominant_gap():

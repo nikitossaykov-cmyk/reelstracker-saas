@@ -90,6 +90,7 @@ class ScriptRequest(BaseModel):
     price_rub: float
     dupe_price_rub: float
     voice_style: str = "normal"
+    cutaways_enabled: bool = True
 
 
 def _get_owned(db: Session, user: User, jid: int) -> StudioJob:
@@ -224,6 +225,7 @@ def make_script(
             price_rub=req.price_rub,
             dupe_price_rub=req.dupe_price_rub,
             voice_style=req.voice_style,
+            cutaways=req.cutaways_enabled,
             openai_api_key=openai_key,
         )
     except Exception as e:

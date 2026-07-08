@@ -303,6 +303,24 @@ def test_media_allowlist_covers_studio_keys(db_session, test_user):
     assert not _verify_key_in_db("u/7/studio/1/nonexistent.mp4", db_session)
 
 
+def test_api_script_autogen_passes_cutaways(auth_client, monkeypatch):
+    import app.api.studio as api_mod
+    seen = {}
+
+    def fake_gen(**kw):
+        seen.update(kw)
+        return "ок"
+    monkeypatch.setattr(api_mod, "generate_studio_script", fake_gen)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    r = auth_client.post("/api/studio/script", json={
+        "product_name": "X", "brand": "Y",
+        "price_rub": 1990, "dupe_price_rub": 16000,
+        "voice_style": "asmr", "cutaways_enabled": False,
+    })
+    assert r.status_code == 200
+    assert seen["cutaways"] is False
+
+
 def test_studio_job_cutaway_columns(db_session, test_user):
     j = StudioJob(
         user_id=test_user.id,

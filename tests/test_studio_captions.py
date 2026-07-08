@@ -153,6 +153,32 @@ def test_studio_script_prompt_asmr_vs_normal():
     assert "шёпот" not in p2.lower()
 
 
+def test_cutaway_still_prompts():
+    from app.services.strategy_single_take.cutaways import build_cutaway_still_prompt
+    cap = build_cutaway_still_prompt(
+        kind="cap_off", product_name="WHITE CHOCOLATE", brand="dose",
+    )
+    assert "SAME woman" in cap
+    assert "second reference image" in cap
+    assert "WHITE CHOCOLATE" in cap and "dose" in cap
+    assert "lifting" in cap.lower() and "cap" in cap.lower()
+    spray = build_cutaway_still_prompt(
+        kind="spray", product_name="WHITE CHOCOLATE", brand="dose",
+    )
+    assert "mist" in spray.lower()
+    assert "pump" in spray.lower()
+    with pytest.raises(ValueError):
+        build_cutaway_still_prompt(kind="sniff", product_name="X", brand="Y")
+
+
+def test_cutaway_motion_prompts():
+    from app.services.strategy_single_take.cutaways import MOTION_PROMPTS, NEGATIVE_PROMPT
+    assert set(MOTION_PROMPTS) == {"cap_off", "spray"}
+    assert "mist" in MOTION_PROMPTS["spray"].lower()
+    assert "drinking" in NEGATIVE_PROMPT
+    assert "kissing" in NEGATIVE_PROMPT
+
+
 def test_polish_filter_hook_untouched_body_sped_up():
     from app.services.strategy_single_take.assemble import build_polish_filter
     fc = build_polish_filter(hook_seconds=3.204)

@@ -30,6 +30,7 @@ from app.models.makeugc_job import MakeUGCJob
 from app.models.persona import Persona
 from app.models.reel import Reel
 from app.models.studio_job import StudioJob
+from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +87,14 @@ def _verify_key_in_db(key: str, db: Session) -> bool:
                       | cast(StudioJob.product_image_keys, SAString).contains(key)
                   )
                   .first() is not None)
-    return has_studio
+    if has_studio:
+        return True
+    # retry clears job.portrait_key, but the saved persona pointer keeps
+    # the R2 object reachable
+    has_persona_key = (db.query(User)
+                       .filter(User.studio_persona_key == key)
+                       .first() is not None)
+    return has_persona_key
 
 
 def _parse_range(header: Optional[str], size: int) -> Optional[tuple[int, int]]:

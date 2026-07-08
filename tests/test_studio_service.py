@@ -743,6 +743,15 @@ def test_api_create_with_persona_flags(auth_client, db_session, monkeypatch):
     assert j2.look_prompt is None
 
 
+def test_media_allowlist_covers_persona_key(db_session, test_user):
+    from app.api.media import _verify_key_in_db
+    # ключ персоны может пережить retry job'а (который чистит portrait_key)
+    test_user.studio_persona_key = "users/1/studio/4/portrait-abc.jpg"
+    db_session.commit()
+    assert _verify_key_in_db("users/1/studio/4/portrait-abc.jpg", db_session)
+    assert not _verify_key_in_db("users/1/studio/4/other.jpg", db_session)
+
+
 def test_studio_persona_columns(db_session, test_user):
     assert test_user.studio_persona_key is None
     test_user.studio_persona_key = "users/1/studio/4/portrait-abc.jpg"

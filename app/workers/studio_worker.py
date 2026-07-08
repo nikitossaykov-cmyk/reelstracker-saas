@@ -32,12 +32,15 @@ from app.services.strategy_makeugc.voiceover import (
 )
 from app.services.strategy_single_take.assemble import (
     AssembleError,
+    CUTAWAY_SECONDS,
     burn_captions,
     concat_clips,
+    cut_clip,
     detect_silences,
     normalize_clip,
     polish,
     probe_duration,
+    still_to_clip,
 )
 from app.services.strategy_single_take.captions import (
     SILENCE_ASMR,
@@ -45,6 +48,8 @@ from app.services.strategy_single_take.captions import (
     align_sentences,
     build_ass,
     parse_silencedetect,
+    pick_insert_gap,
+    shift_captions,
     speech_spans,
     split_sentences,
 )
@@ -107,26 +112,53 @@ def _assemble(
     lipsync_path: Path,
     voiceover_path: Path,
     hook_path: Path | None,
+    insert_paths: list[Path] | None = None,
 ) -> Path:
-    """normalize → optional hook concat → captions → polish. Returns final mp4."""
+    """normalize → optional cutaway splice → optional hook concat →
+    captions → polish. Returns final mp4."""
     body = normalize_clip(lipsync_path, tmp / "body.mp4")
+
+    # VO analysis (needed for both splice point and captions)
+    noise, min_d = SILENCE_ASMR if j.voice_style == "asmr" else SILENCE_NORMAL
+    stderr = detect_silences(voiceover_path, noise=noise, min_d=min_d)
+    vo_total = probe_duration(voiceover_path)
+    spans = speech_spans(parse_silencedetect(stderr), total=vo_total)
+
+    # --- cutaway splice (optional) ---
+    split_at: float | None = None
+    inserts_seconds = 0.0
+    parts: list[Path] = [body]
+    if insert_paths:
+        split_at = pick_insert_gap(spans, vo_total)
+    if split_at is not None:
+        body_a = cut_clip(body, tmp / "body_a.mp4", start=0.0, end=split_at)
+        body_b = cut_clip(body, tmp / "body_b.mp4", start=split_at)
+        trimmed: list[Path] = []
+        for i, ins in enumerate(insert_paths):
+            ins_n = normalize_clip(ins, tmp / f"ins_n_{i}.mp4")
+            trimmed.append(
+                cut_clip(ins_n, tmp / f"ins_{i}.mp4",
+                         start=0.0, end=CUTAWAY_SECONDS)
+            )
+        inserts_seconds = CUTAWAY_SECONDS * len(trimmed)
+        parts = [body_a, *trimmed, body_b]
+
     hook_seconds = 0.0
     if hook_path is not None:
         hook_n = normalize_clip(hook_path, tmp / "hook_n.mp4")
         hook_seconds = probe_duration(hook_n)
-        raw = concat_clips([hook_n, body], tmp / "raw.mp4")
-    else:
-        raw = body
+        parts = [hook_n, *parts]
+
+    raw = concat_clips(parts, tmp / "raw.mp4") if len(parts) > 1 else parts[0]
 
     staged = raw
     if j.captions_enabled and j.script_text:
-        noise, min_d = SILENCE_ASMR if j.voice_style == "asmr" else SILENCE_NORMAL
-        stderr = detect_silences(voiceover_path, noise=noise, min_d=min_d)
-        vo_total = probe_duration(voiceover_path)
-        spans = speech_spans(parse_silencedetect(stderr), total=vo_total)
         sents = split_sentences(j.script_text)
         aligned = align_sentences(sents, spans)
-        # shift into final timeline (hook precedes the talking take)
+        # shift for inserts FIRST (split_at is in the VO timeline),
+        # THEN into the final timeline (hook precedes the take)
+        if split_at is not None and inserts_seconds > 0:
+            aligned = shift_captions(aligned, split_at, inserts_seconds)
         aligned = [(s + hook_seconds, e + hook_seconds, t) for s, e, t in aligned]
         ass_path = tmp / "captions.ass"
         ass_path.write_text(build_ass(aligned))
@@ -289,8 +321,34 @@ def process_job(db: Session, j: StudioJob, user: User) -> None:
             hook_path = tmp / "hook_src.mp4"
             hook_path.write_bytes(_get_blob(r2, j.hook_video_key))
 
+        insert_paths: list[Path] = []
+        if j.cutaways_enabled:
+            for kind, clip_attr, still_attr in (
+                ("cap_off", "cap_clip_key", "cap_still_key"),
+                ("spray", "spray_clip_key", "spray_still_key"),
+            ):
+                clip_key = getattr(j, clip_attr)
+                still_key = getattr(j, still_attr)
+                try:
+                    if clip_key:
+                        p = tmp / f"cut_{kind}.mp4"
+                        p.write_bytes(_get_blob(r2, clip_key))
+                        insert_paths.append(p)
+                    elif still_key:
+                        jpg = tmp / f"cut_{kind}.jpg"
+                        jpg.write_bytes(_get_blob(r2, still_key))
+                        insert_paths.append(
+                            still_to_clip(jpg, tmp / f"cut_{kind}_static.mp4")
+                        )
+                except Exception as e:
+                    log.warning("studio %s insert %s unusable (skip): %s",
+                                j.id, kind, e)
+
         try:
-            final_path = _assemble(j, tmp, lipsync_path, voiceover_path, hook_path)
+            final_path = _assemble(
+                j, tmp, lipsync_path, voiceover_path, hook_path,
+                insert_paths=insert_paths or None,
+            )
         except AssembleError as e:
             _fail(db, j, f"ffmpeg pipeline failed: {str(e)[:300]}")
             return

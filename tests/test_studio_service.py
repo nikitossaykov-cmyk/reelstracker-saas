@@ -154,7 +154,7 @@ def test_worker_happy_path(db_session, test_user, fake_r2_worker, monkeypatch, t
         w, "generate_lipsync", lambda **kw: (b"lipsync-mp4", 0.74),
     )
     # assemble: pretend ffmpeg produced a final file
-    def fake_assemble(job, tmp, lipsync_path, voiceover_path, hook_path):
+    def fake_assemble(job, tmp, lipsync_path, voiceover_path, hook_path, insert_paths=None):
         out = tmp / "final.mp4"
         out.write_bytes(b"final-mp4")
         return out
@@ -189,7 +189,7 @@ def test_worker_judge_failure_is_non_blocking(
     monkeypatch.setattr(w, "generate_voiceover_v3", lambda **kw: b"a")
     monkeypatch.setattr(w, "generate_lipsync", lambda **kw: (b"v", 0.74))
 
-    def fake_assemble(job, tmp, lipsync_path, voiceover_path, hook_path):
+    def fake_assemble(job, tmp, lipsync_path, voiceover_path, hook_path, insert_paths=None):
         out = tmp / "final.mp4"
         out.write_bytes(b"f")
         return out
@@ -232,7 +232,7 @@ def _patch_pre_cutaway_stages(monkeypatch, w):
     monkeypatch.setattr(w, "generate_voiceover_v3", lambda **kw: b"a")
     monkeypatch.setattr(w, "generate_lipsync", lambda **kw: (b"v", 0.74))
 
-    def fake_assemble(job, tmp, lipsync_path, voiceover_path, hook_path):
+    def fake_assemble(job, tmp, lipsync_path, voiceover_path, hook_path, insert_paths=None):
         out = tmp / "final.mp4"
         out.write_bytes(b"f")
         return out
@@ -304,6 +304,93 @@ def test_worker_cutaway_animation_failure_keeps_still(db_session, test_user, fak
     assert j.status == StudioStatus.READY
     assert j.cap_still_key and j.spray_still_key   # stills survive for static fallback
     assert j.cap_clip_key is None
+
+
+def test_assemble_splices_inserts_and_shifts_captions(monkeypatch, tmp_path):
+    """_assemble with insert clips: body split at the VO gap, inserts
+    concatenated between halves, captions after the split shifted right."""
+    import app.workers.studio_worker as w
+
+    calls = {"cut": [], "concat": None, "ass": None}
+
+    monkeypatch.setattr(w, "normalize_clip", lambda src, dst: (dst.write_bytes(b"n"), dst)[1])
+    monkeypatch.setattr(w, "probe_duration", lambda p: 10.0)
+    # VO: speech 0-5 and 7.5-10 → gap 5.0-7.5, midpoint 6.25
+    monkeypatch.setattr(w, "detect_silences", lambda p, noise, min_d: (
+        "[x] silence_start: 5.0\n[x] silence_end: 7.5 | silence_duration: 2.5\n"
+    ))
+
+    def fake_cut(src, dst, *, start, end=None):
+        calls["cut"].append((start, end))
+        dst.write_bytes(b"c")
+        return dst
+    monkeypatch.setattr(w, "cut_clip", fake_cut)
+
+    def fake_concat(parts, dst):
+        calls["concat"] = [p.name for p in parts]
+        dst.write_bytes(b"cc")
+        return dst
+    monkeypatch.setattr(w, "concat_clips", fake_concat)
+
+    def fake_burn(src, ass_path, dst):
+        calls["ass"] = ass_path.read_text()
+        dst.write_bytes(b"b")
+        return dst
+    monkeypatch.setattr(w, "burn_captions", fake_burn)
+    monkeypatch.setattr(w, "polish", lambda src, dst, *, hook_seconds: (dst.write_bytes(b"p"), dst)[1])
+
+    j = StudioJob(
+        user_id=1, product_image_keys=["k"], product_name="X", brand="Y",
+        price_rub=Decimal("1"), dupe_price_rub=Decimal("2"),
+        script_text="Раз. Два", voice_style="normal",
+        captions_enabled=True, cutaways_enabled=True,
+        status=StudioStatus.ASSEMBLE, cost_usd=Decimal("0"),
+        created_at=datetime.utcnow(),
+    )
+    tmp = tmp_path
+    lipsync = tmp / "lipsync.mp4"; lipsync.write_bytes(b"l")
+    vo = tmp / "vo.mp3"; vo.write_bytes(b"v")
+    cap_ins = tmp / "cap_ins.mp4"; cap_ins.write_bytes(b"i1")
+    spray_ins = tmp / "spray_ins.mp4"; spray_ins.write_bytes(b"i2")
+
+    out = w._assemble(j, tmp, lipsync, vo, None, insert_paths=[cap_ins, spray_ins])
+    assert out.read_bytes() == b"p"
+    # body split at gap midpoint 6.25: (0, 6.25) then (6.25, None)
+    assert (0.0, 6.25) in calls["cut"] and (6.25, None) in calls["cut"]
+    # inserts trimmed to 1.2s: two cuts (0, 1.2)
+    assert calls["cut"].count((0.0, 1.2)) == 2
+    # concat order: body_a, insert1, insert2, body_b (no hook)
+    assert calls["concat"] == ["body_a.mp4", "ins_0.mp4", "ins_1.mp4", "body_b.mp4"]
+    # caption «Два» (span 7.5-10) shifted right by 2×1.2s → starts ≥ 9.9
+    assert "0:00:09.90" in calls["ass"]
+
+
+def test_assemble_no_gap_falls_back_to_straight_body(monkeypatch, tmp_path):
+    import app.workers.studio_worker as w
+    monkeypatch.setattr(w, "normalize_clip", lambda src, dst: (dst.write_bytes(b"n"), dst)[1])
+    monkeypatch.setattr(w, "probe_duration", lambda p: 10.0)
+    # continuous speech → no gap → pick_insert_gap None
+    monkeypatch.setattr(w, "detect_silences", lambda p, noise, min_d: "")
+
+    def no_cut(*a, **kw):
+        raise AssertionError("must not split without a gap")
+    monkeypatch.setattr(w, "cut_clip", no_cut)
+    monkeypatch.setattr(w, "burn_captions", lambda src, ass, dst: (dst.write_bytes(b"b"), dst)[1])
+    monkeypatch.setattr(w, "polish", lambda src, dst, *, hook_seconds: (dst.write_bytes(b"p"), dst)[1])
+
+    j = StudioJob(
+        user_id=1, product_image_keys=["k"], product_name="X", brand="Y",
+        price_rub=Decimal("1"), dupe_price_rub=Decimal("2"),
+        script_text="Раз", voice_style="normal",
+        captions_enabled=True, cutaways_enabled=True,
+        status=StudioStatus.ASSEMBLE, cost_usd=Decimal("0"),
+        created_at=datetime.utcnow(),
+    )
+    lipsync = tmp_path / "l.mp4"; lipsync.write_bytes(b"l")
+    vo = tmp_path / "v.mp3"; vo.write_bytes(b"v")
+    ins = tmp_path / "i.mp4"; ins.write_bytes(b"i")
+    out = w._assemble(j, tmp_path, lipsync, vo, None, insert_paths=[ins])
+    assert out.read_bytes() == b"p"
 
 
 def test_api_create_and_list_and_retry(auth_client, db_session, test_user, fake_r2):

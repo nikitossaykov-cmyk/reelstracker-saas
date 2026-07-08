@@ -572,6 +572,89 @@ def test_studio_job_cutaway_columns(db_session, test_user):
     assert StudioStatus.CUTAWAYS == "cutaways"
 
 
+def test_api_persona_get_and_save(auth_client, db_session, test_user):
+    r = auth_client.get("/api/studio/persona")
+    assert r.status_code == 200
+    assert r.json()["persona_key"] is None
+
+    j = StudioJob(
+        user_id=test_user.id,
+        product_image_keys=["k"],
+        product_name="X", brand="Y",
+        price_rub=Decimal("1"), dupe_price_rub=Decimal("2"),
+        voice_style="normal", captions_enabled=True,
+        portrait_key="users/1/studio/4/portrait-abc.jpg",
+        status=StudioStatus.READY,
+        cost_usd=Decimal("0"),
+        created_at=datetime.utcnow(),
+    )
+    db_session.add(j)
+    db_session.commit()
+
+    r = auth_client.post("/api/studio/persona", json={"job_id": j.id})
+    assert r.status_code == 200
+    assert r.json()["persona_key"] == "users/1/studio/4/portrait-abc.jpg"
+    db_session.refresh(test_user)
+    assert test_user.studio_persona_key == "users/1/studio/4/portrait-abc.jpg"
+
+    r = auth_client.get("/api/studio/persona")
+    assert r.json()["persona_key"] == "users/1/studio/4/portrait-abc.jpg"
+
+
+def test_api_persona_save_rejects_bad_jobs(auth_client, db_session, test_user):
+    # чужого/несуществующего job'а нет → 404
+    r = auth_client.post("/api/studio/persona", json={"job_id": 99999})
+    assert r.status_code == 404
+    # свой, но без портрета → 400
+    j = StudioJob(
+        user_id=test_user.id,
+        product_image_keys=["k"],
+        product_name="X", brand="Y",
+        price_rub=Decimal("1"), dupe_price_rub=Decimal("2"),
+        voice_style="normal", captions_enabled=True,
+        status=StudioStatus.PENDING,
+        cost_usd=Decimal("0"),
+        created_at=datetime.utcnow(),
+    )
+    db_session.add(j)
+    db_session.commit()
+    r = auth_client.post("/api/studio/persona", json={"job_id": j.id})
+    assert r.status_code == 400
+
+
+def test_api_create_with_persona_flags(auth_client, db_session, monkeypatch):
+    import app.services.studio_service as svc
+    monkeypatch.setattr(svc, "get_r2", lambda: FakeR2())
+    r = auth_client.post(
+        "/api/studio/jobs/",
+        files=[("product_images", ("p.jpg", JPEG, "image/jpeg"))],
+        data={
+            "product_name": "X", "brand": "Y",
+            "price_rub": "1990", "dupe_price_rub": "16000",
+            "use_persona": "true",
+            "look_prompt": "белый топ",
+        },
+    )
+    assert r.status_code == 202, r.text
+    j = db_session.get(StudioJob, r.json()["id"])
+    assert j.use_persona is True
+    assert j.look_prompt == "белый топ"
+
+    r2 = auth_client.post(
+        "/api/studio/jobs/",
+        files=[("product_images", ("p.jpg", JPEG, "image/jpeg"))],
+        data={
+            "product_name": "X", "brand": "Y",
+            "price_rub": "1990", "dupe_price_rub": "16000",
+            "use_persona": "false",
+        },
+    )
+    assert r2.status_code == 202, r2.text
+    j2 = db_session.get(StudioJob, r2.json()["id"])
+    assert j2.use_persona is False
+    assert j2.look_prompt is None
+
+
 def test_studio_persona_columns(db_session, test_user):
     assert test_user.studio_persona_key is None
     test_user.studio_persona_key = "users/1/studio/4/portrait-abc.jpg"

@@ -40,6 +40,8 @@ def create_studio_job_async(
     voice_style: str,
     captions_enabled: bool,
     cutaways_enabled: bool = True,
+    use_persona: bool = True,
+    look_prompt: str | None = None,
     hook_video: tuple[bytes, str] | None = None,
 ) -> StudioJob:
     product_name = (product_name or "").strip()
@@ -126,6 +128,8 @@ def create_studio_job_async(
         voice_style=voice_style,
         captions_enabled=captions_enabled,
         cutaways_enabled=cutaways_enabled,
+        use_persona=use_persona,
+        look_prompt=((look_prompt or "").strip() or None) if use_persona else None,
         hook_video_key=hook_key,
         status=StudioStatus.PENDING,
         cost_usd=Decimal("0"),

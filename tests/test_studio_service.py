@@ -572,6 +572,94 @@ def test_studio_job_cutaway_columns(db_session, test_user):
     assert StudioStatus.CUTAWAYS == "cutaways"
 
 
+def _patch_post_portrait_stages(monkeypatch, w):
+    monkeypatch.setattr(w, "generate_voiceover_v3", lambda **kw: b"a")
+    monkeypatch.setattr(w, "generate_lipsync", lambda **kw: (b"v", 0.74))
+
+    def fake_assemble(job, tmp, lipsync_path, voiceover_path, hook_path, insert_paths=None):
+        out = tmp / "final.mp4"
+        out.write_bytes(b"f")
+        return out
+    monkeypatch.setattr(w, "_assemble", fake_assemble)
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "e-key")
+    monkeypatch.setenv("MAKEUGC_DEFAULT_VOICE_ID", "v-id")
+    monkeypatch.setenv("REPLICATE_API_TOKEN", "r-key")
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+
+
+def test_worker_persona_reuse(db_session, test_user, fake_r2_worker, monkeypatch):
+    import app.workers.studio_worker as w
+    _patch_post_portrait_stages(monkeypatch, w)
+
+    test_user.studio_persona_key = "users/1/studio/4/portrait-abc.jpg"
+    db_session.commit()
+    fake_r2_worker.blobs["users/1/studio/4/portrait-abc.jpg"] = b"persona-jpg"
+
+    seen = {}
+    def fake_persona(**kw):
+        seen.update(kw)
+        return b"portrait-with-persona", 0.15
+    monkeypatch.setattr(w, "generate_persona_portrait", fake_persona)
+    def boom(**kw):
+        raise AssertionError("не должен звать generate_studio_portrait")
+    monkeypatch.setattr(w, "generate_studio_portrait", boom)
+
+    j = _make_pending_job(db_session, test_user, fake_r2_worker, use_persona=True)
+    w.process_job(db_session, j, test_user)
+
+    assert j.status == StudioStatus.READY
+    assert seen["persona_bytes"] == b"persona-jpg"
+    assert seen["look_prompt"] is None
+    assert fake_r2_worker.blobs[j.portrait_key] == b"portrait-with-persona"
+    # канон без смены образа не трогаем (анти-дрифт)
+    db_session.refresh(test_user)
+    assert test_user.studio_persona_key == "users/1/studio/4/portrait-abc.jpg"
+
+
+def test_worker_persona_look_updates_canon(db_session, test_user, fake_r2_worker, monkeypatch):
+    import app.workers.studio_worker as w
+    _patch_post_portrait_stages(monkeypatch, w)
+
+    test_user.studio_persona_key = "users/1/studio/4/portrait-abc.jpg"
+    db_session.commit()
+    fake_r2_worker.blobs["users/1/studio/4/portrait-abc.jpg"] = b"persona-jpg"
+
+    seen = {}
+    def fake_persona(**kw):
+        seen.update(kw)
+        return b"new-look", 0.15
+    monkeypatch.setattr(w, "generate_persona_portrait", fake_persona)
+
+    j = _make_pending_job(
+        db_session, test_user, fake_r2_worker,
+        use_persona=True, look_prompt="белый топ",
+    )
+    w.process_job(db_session, j, test_user)
+
+    assert j.status == StudioStatus.READY
+    assert seen["look_prompt"] == "белый топ"
+    db_session.refresh(test_user)
+    assert test_user.studio_persona_key == j.portrait_key  # новый образ = новый канон
+
+
+def test_worker_persona_missing_falls_back(db_session, test_user, fake_r2_worker, monkeypatch):
+    import app.workers.studio_worker as w
+    _patch_post_portrait_stages(monkeypatch, w)
+
+    assert test_user.studio_persona_key is None
+    monkeypatch.setattr(w, "generate_studio_portrait", lambda **kw: (b"fresh", 0.15))
+    def boom(**kw):
+        raise AssertionError("нет персоны — нечего референсить")
+    monkeypatch.setattr(w, "generate_persona_portrait", boom)
+
+    j = _make_pending_job(db_session, test_user, fake_r2_worker, use_persona=True)
+    w.process_job(db_session, j, test_user)
+
+    assert j.status == StudioStatus.READY
+    db_session.refresh(test_user)
+    assert test_user.studio_persona_key is None  # канон только явным сохранением
+
+
 def test_api_persona_get_and_save(auth_client, db_session, test_user):
     r = auth_client.get("/api/studio/persona")
     assert r.status_code == 200

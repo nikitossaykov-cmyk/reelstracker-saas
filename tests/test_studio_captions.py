@@ -215,6 +215,7 @@ def test_cutaway_still_prompts():
     assert "second reference image" in cap
     assert "WHITE CHOCOLATE" in cap and "dose" in cap
     assert "lifting" in cap.lower() and "cap" in cap.lower()
+    assert "spray pump" in cap.lower()  # под крышкой обязан быть дозатор
     spray = build_cutaway_still_prompt(
         kind="spray", product_name="WHITE CHOCOLATE", brand="dose",
     )
@@ -228,8 +229,10 @@ def test_cutaway_motion_prompts():
     from app.services.strategy_single_take.cutaways import MOTION_PROMPTS, NEGATIVE_PROMPT
     assert set(MOTION_PROMPTS) == {"cap_off", "spray"}
     assert "mist" in MOTION_PROMPTS["spray"].lower()
+    assert "spray pump" in MOTION_PROMPTS["cap_off"].lower()
     assert "drinking" in NEGATIVE_PROMPT
     assert "kissing" in NEGATIVE_PROMPT
+    assert "bare open bottle neck" in NEGATIVE_PROMPT
 
 
 def test_cut_clip_cmd():

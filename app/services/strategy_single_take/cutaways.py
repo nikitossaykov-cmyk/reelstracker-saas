@@ -31,7 +31,10 @@ _ACTIONS = {
         "Both her hands are raised to chest height in front of her: one "
         "hand holds the bottle, the other is lifting the matte black cap "
         "straight up off the bottle — the cap has just separated from the "
-        "neck. Her eyes look down at the bottle with curiosity."
+        "neck, revealing the metal spray pump atomizer with its nozzle on "
+        "top of the bottle neck (a perfume spray bottle always has a pump "
+        "under the cap, never a bare open neck). Her eyes look down at the "
+        "bottle with curiosity."
     ),
     "spray": (
         "She holds the bottle in her right hand raised toward her neck and "
@@ -44,8 +47,9 @@ _ACTIONS = {
 MOTION_PROMPTS = {
     "cap_off": (
         "One subtle continuous motion only: her hand slowly lifts the "
-        "matte black cap up and away from the bottle, she watches the "
-        "bottle. The bottle stays in her other hand throughout, no "
+        "matte black cap up and away from the bottle, revealing the metal "
+        "spray pump atomizer on the bottle neck underneath, she watches "
+        "the bottle. The bottle stays in her other hand throughout, no "
         "morphing, no warping, the label remains readable. Soft ambient "
         "indoor calm, smooth cinematic micro-motion."
     ),
@@ -60,7 +64,8 @@ MOTION_PROMPTS = {
 
 NEGATIVE_PROMPT = (
     "drinking the bottle, kissing the bottle, putting bottle in mouth, "
-    "mouth-to-bottle, bottle to lips, eating, distorted hand, deformed "
+    "mouth-to-bottle, bottle to lips, eating, bare open bottle neck, "
+    "bottle without spray pump, missing atomizer, distorted hand, deformed "
     "fingers, extra fingers, morphing bottle, melting label, jittery, "
     "low quality, watermark"
 )

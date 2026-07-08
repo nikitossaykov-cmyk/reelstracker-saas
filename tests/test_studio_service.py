@@ -572,6 +572,209 @@ def test_studio_job_cutaway_columns(db_session, test_user):
     assert StudioStatus.CUTAWAYS == "cutaways"
 
 
+def _patch_post_portrait_stages(monkeypatch, w):
+    monkeypatch.setattr(w, "generate_voiceover_v3", lambda **kw: b"a")
+    monkeypatch.setattr(w, "generate_lipsync", lambda **kw: (b"v", 0.74))
+
+    def fake_assemble(job, tmp, lipsync_path, voiceover_path, hook_path, insert_paths=None):
+        out = tmp / "final.mp4"
+        out.write_bytes(b"f")
+        return out
+    monkeypatch.setattr(w, "_assemble", fake_assemble)
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "e-key")
+    monkeypatch.setenv("MAKEUGC_DEFAULT_VOICE_ID", "v-id")
+    monkeypatch.setenv("REPLICATE_API_TOKEN", "r-key")
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+
+
+def test_worker_persona_reuse(db_session, test_user, fake_r2_worker, monkeypatch):
+    import app.workers.studio_worker as w
+    _patch_post_portrait_stages(monkeypatch, w)
+
+    test_user.studio_persona_key = "users/1/studio/4/portrait-abc.jpg"
+    db_session.commit()
+    fake_r2_worker.blobs["users/1/studio/4/portrait-abc.jpg"] = b"persona-jpg"
+
+    seen = {}
+    def fake_persona(**kw):
+        seen.update(kw)
+        return b"portrait-with-persona", 0.15
+    monkeypatch.setattr(w, "generate_persona_portrait", fake_persona)
+    def boom(**kw):
+        raise AssertionError("не должен звать generate_studio_portrait")
+    monkeypatch.setattr(w, "generate_studio_portrait", boom)
+
+    j = _make_pending_job(db_session, test_user, fake_r2_worker, use_persona=True)
+    w.process_job(db_session, j, test_user)
+
+    assert j.status == StudioStatus.READY
+    assert seen["persona_bytes"] == b"persona-jpg"
+    assert seen["look_prompt"] is None
+    assert fake_r2_worker.blobs[j.portrait_key] == b"portrait-with-persona"
+    # канон без смены образа не трогаем (анти-дрифт)
+    db_session.refresh(test_user)
+    assert test_user.studio_persona_key == "users/1/studio/4/portrait-abc.jpg"
+
+
+def test_worker_persona_look_updates_canon(db_session, test_user, fake_r2_worker, monkeypatch):
+    import app.workers.studio_worker as w
+    _patch_post_portrait_stages(monkeypatch, w)
+
+    test_user.studio_persona_key = "users/1/studio/4/portrait-abc.jpg"
+    db_session.commit()
+    fake_r2_worker.blobs["users/1/studio/4/portrait-abc.jpg"] = b"persona-jpg"
+
+    seen = {}
+    def fake_persona(**kw):
+        seen.update(kw)
+        return b"new-look", 0.15
+    monkeypatch.setattr(w, "generate_persona_portrait", fake_persona)
+
+    j = _make_pending_job(
+        db_session, test_user, fake_r2_worker,
+        use_persona=True, look_prompt="белый топ",
+    )
+    w.process_job(db_session, j, test_user)
+
+    assert j.status == StudioStatus.READY
+    assert seen["look_prompt"] == "белый топ"
+    db_session.refresh(test_user)
+    assert test_user.studio_persona_key == j.portrait_key  # новый образ = новый канон
+
+
+def test_worker_persona_missing_falls_back(db_session, test_user, fake_r2_worker, monkeypatch):
+    import app.workers.studio_worker as w
+    _patch_post_portrait_stages(monkeypatch, w)
+
+    assert test_user.studio_persona_key is None
+    monkeypatch.setattr(w, "generate_studio_portrait", lambda **kw: (b"fresh", 0.15))
+    def boom(**kw):
+        raise AssertionError("нет персоны — нечего референсить")
+    monkeypatch.setattr(w, "generate_persona_portrait", boom)
+
+    j = _make_pending_job(db_session, test_user, fake_r2_worker, use_persona=True)
+    w.process_job(db_session, j, test_user)
+
+    assert j.status == StudioStatus.READY
+    db_session.refresh(test_user)
+    assert test_user.studio_persona_key is None  # канон только явным сохранением
+
+
+def test_api_persona_get_and_save(auth_client, db_session, test_user):
+    r = auth_client.get("/api/studio/persona")
+    assert r.status_code == 200
+    assert r.json()["persona_key"] is None
+
+    j = StudioJob(
+        user_id=test_user.id,
+        product_image_keys=["k"],
+        product_name="X", brand="Y",
+        price_rub=Decimal("1"), dupe_price_rub=Decimal("2"),
+        voice_style="normal", captions_enabled=True,
+        portrait_key="users/1/studio/4/portrait-abc.jpg",
+        status=StudioStatus.READY,
+        cost_usd=Decimal("0"),
+        created_at=datetime.utcnow(),
+    )
+    db_session.add(j)
+    db_session.commit()
+
+    r = auth_client.post("/api/studio/persona", json={"job_id": j.id})
+    assert r.status_code == 200
+    assert r.json()["persona_key"] == "users/1/studio/4/portrait-abc.jpg"
+    db_session.refresh(test_user)
+    assert test_user.studio_persona_key == "users/1/studio/4/portrait-abc.jpg"
+
+    r = auth_client.get("/api/studio/persona")
+    assert r.json()["persona_key"] == "users/1/studio/4/portrait-abc.jpg"
+
+
+def test_api_persona_save_rejects_bad_jobs(auth_client, db_session, test_user):
+    # чужого/несуществующего job'а нет → 404
+    r = auth_client.post("/api/studio/persona", json={"job_id": 99999})
+    assert r.status_code == 404
+    # свой, но без портрета → 400
+    j = StudioJob(
+        user_id=test_user.id,
+        product_image_keys=["k"],
+        product_name="X", brand="Y",
+        price_rub=Decimal("1"), dupe_price_rub=Decimal("2"),
+        voice_style="normal", captions_enabled=True,
+        status=StudioStatus.PENDING,
+        cost_usd=Decimal("0"),
+        created_at=datetime.utcnow(),
+    )
+    db_session.add(j)
+    db_session.commit()
+    r = auth_client.post("/api/studio/persona", json={"job_id": j.id})
+    assert r.status_code == 400
+
+
+def test_api_create_with_persona_flags(auth_client, db_session, monkeypatch):
+    import app.services.studio_service as svc
+    monkeypatch.setattr(svc, "get_r2", lambda: FakeR2())
+    r = auth_client.post(
+        "/api/studio/jobs/",
+        files=[("product_images", ("p.jpg", JPEG, "image/jpeg"))],
+        data={
+            "product_name": "X", "brand": "Y",
+            "price_rub": "1990", "dupe_price_rub": "16000",
+            "use_persona": "true",
+            "look_prompt": "белый топ",
+        },
+    )
+    assert r.status_code == 202, r.text
+    j = db_session.get(StudioJob, r.json()["id"])
+    assert j.use_persona is True
+    assert j.look_prompt == "белый топ"
+
+    r2 = auth_client.post(
+        "/api/studio/jobs/",
+        files=[("product_images", ("p.jpg", JPEG, "image/jpeg"))],
+        data={
+            "product_name": "X", "brand": "Y",
+            "price_rub": "1990", "dupe_price_rub": "16000",
+            "use_persona": "false",
+        },
+    )
+    assert r2.status_code == 202, r2.text
+    j2 = db_session.get(StudioJob, r2.json()["id"])
+    assert j2.use_persona is False
+    assert j2.look_prompt is None
+
+
+def test_media_allowlist_covers_persona_key(db_session, test_user):
+    from app.api.media import _verify_key_in_db
+    # ключ персоны может пережить retry job'а (который чистит portrait_key)
+    test_user.studio_persona_key = "users/1/studio/4/portrait-abc.jpg"
+    db_session.commit()
+    assert _verify_key_in_db("users/1/studio/4/portrait-abc.jpg", db_session)
+    assert not _verify_key_in_db("users/1/studio/4/other.jpg", db_session)
+
+
+def test_studio_persona_columns(db_session, test_user):
+    assert test_user.studio_persona_key is None
+    test_user.studio_persona_key = "users/1/studio/4/portrait-abc.jpg"
+    j = StudioJob(
+        user_id=test_user.id,
+        product_image_keys=["k"],
+        product_name="X", brand="Y",
+        price_rub=Decimal("1"), dupe_price_rub=Decimal("2"),
+        voice_style="normal", captions_enabled=True,
+        look_prompt="белый топ",
+        status=StudioStatus.PENDING,
+        cost_usd=Decimal("0"),
+        created_at=datetime.utcnow(),
+    )
+    db_session.add(j)
+    db_session.commit()
+    db_session.refresh(j)
+    db_session.refresh(test_user)
+    assert j.use_persona is True               # python default
+    assert j.look_prompt == "белый топ"
+    assert test_user.studio_persona_key == "users/1/studio/4/portrait-abc.jpg"
+
+
 def test_api_script_autogen(auth_client, monkeypatch):
     import app.api.studio as api_mod
     monkeypatch.setattr(

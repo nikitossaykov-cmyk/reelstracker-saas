@@ -59,7 +59,10 @@ from app.services.strategy_single_take.cutaways import (
     generate_cutaway_still,
 )
 from app.services.strategy_single_take.judge import judge_video
-from app.services.strategy_single_take.portrait import generate_studio_portrait
+from app.services.strategy_single_take.portrait import (
+    generate_persona_portrait,
+    generate_studio_portrait,
+)
 from app.services.strategy_single_take.voiceover import generate_voiceover_v3
 
 
@@ -183,15 +186,28 @@ def process_job(db: Session, j: StudioJob, user: User) -> None:
     # --- PORTRAIT (resume-safe) ---
     if not j.portrait_key:
         _mark(db, j, StudioStatus.PORTRAIT)
+        persona_key = user.studio_persona_key if j.use_persona else None
         try:
-            result, cost = generate_studio_portrait(
-                product_image_bytes=product_bytes,
-                product_content_type="image/jpeg",
-                product_name=j.product_name,
-                brand=j.brand,
-                asmr=(j.voice_style == "asmr"),
-                replicate_api_key=replicate_key,
-            )
+            if persona_key:
+                result, cost = generate_persona_portrait(
+                    persona_bytes=_get_blob(r2, persona_key),
+                    product_image_bytes=product_bytes,
+                    product_content_type="image/jpeg",
+                    product_name=j.product_name,
+                    brand=j.brand,
+                    asmr=(j.voice_style == "asmr"),
+                    look_prompt=j.look_prompt,
+                    replicate_api_key=replicate_key,
+                )
+            else:
+                result, cost = generate_studio_portrait(
+                    product_image_bytes=product_bytes,
+                    product_content_type="image/jpeg",
+                    product_name=j.product_name,
+                    brand=j.brand,
+                    asmr=(j.voice_style == "asmr"),
+                    replicate_api_key=replicate_key,
+                )
             blob = _to_bytes(result, timeout=120)
         except ReplicateSafetyError as e:
             _fail(db, j, f"🛑 Moderation отбила portrait: {str(e)[:200]}")
@@ -206,6 +222,10 @@ def process_job(db: Session, j: StudioJob, user: User) -> None:
         key = f"users/{j.user_id}/studio/{j.id}/portrait-{uuid.uuid4().hex[:6]}.jpg"
         r2.upload_bytes(key, blob, content_type="image/jpeg")
         j.portrait_key = key
+        if persona_key and j.look_prompt:
+            # новый образ становится каноном; без look_prompt канон не
+            # трогаем — иначе копия-с-копии дрифтует от поколения к поколению
+            user.studio_persona_key = key
         _add_cost(db, j, cost)
 
     # --- VOICEOVER ---

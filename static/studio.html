@@ -73,6 +73,24 @@
       <input id="f-cutaways" type="checkbox" checked> вставки-действия (открыть + пшик)
     </label>
     <div>
+      <label class="text-xs opacity-70">Девушка:</label>
+      <div class="mt-1 space-y-1">
+        <label class="text-sm flex items-center gap-2">
+          <input type="radio" name="persona" value="same" checked> та же (сохранённая)
+        </label>
+        <label class="text-sm flex items-center gap-2">
+          <input type="radio" name="persona" value="look"> та же, сменить образ
+        </label>
+        <input id="f-look" placeholder="например: белый топ, волосы в пучок"
+               class="w-full bg-white/10 rounded-lg px-3 py-2 text-sm hidden">
+        <label class="text-sm flex items-center gap-2">
+          <input type="radio" name="persona" value="new"> новое лицо
+        </label>
+      </div>
+      <p id="persona-hint" class="text-xs opacity-50 mt-1 hidden">
+        персона ещё не сохранена — сначала сделай рилс и нажми «сохранить девушку»</p>
+    </div>
+    <div>
       <label class="text-xs opacity-70">Hook-клип (опционально, mp4/mov)</label>
       <input id="f-hook" type="file" accept="video/*"
              class="w-full mt-1 text-xs file:bg-white/10 file:border-0 file:rounded-lg file:px-3 file:py-2 file:text-white file:mr-3">
@@ -133,6 +151,47 @@ document.getElementById('logout-btn').onclick = () => {
 };
 
 /* ── Studio ── */
+let PERSONA = null;
+
+async function loadPersona() {
+  try {
+    const r = await authFetch('/api/studio/persona');
+    if (!r.ok) return;
+    PERSONA = (await r.json()).persona_key;
+  } catch (e) { console.error('persona', e); }
+  const hasPersona = !!PERSONA;
+  document.getElementById('persona-hint').classList.toggle('hidden', hasPersona);
+  for (const v of ['same', 'look']) {
+    document.querySelector(`input[name=persona][value=${v}]`).disabled = !hasPersona;
+  }
+  if (!hasPersona) {
+    document.querySelector('input[name=persona][value=new]').checked = true;
+    document.getElementById('f-look').classList.add('hidden');
+  }
+}
+
+document.querySelectorAll('input[name=persona]').forEach(el => {
+  el.onchange = () => {
+    document.getElementById('f-look')
+      .classList.toggle('hidden', el.value !== 'look');
+  };
+});
+
+async function savePersona(jobId) {
+  const r = await authFetch('/api/studio/persona', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ job_id: jobId }),
+  });
+  if (!r.ok) {
+    const d = await r.json().catch(() => ({}));
+    alert(d.detail || 'не удалось сохранить персону');
+    return;
+  }
+  await loadPersona();
+  loadJobs();
+}
+
 const STAGES = [
   ['portrait',  'Портрет'],
   ['voiceover', 'Озвучка'],
@@ -184,6 +243,10 @@ function card(j) {
     ? `<p class="text-xs text-red-300 mt-2">${esc(j.error_message)}</p>` : '';
   const retry = (j.status === 'failed' || j.status === 'ready')
     ? `<button onclick="retryJob(${j.id})" class="text-xs text-amber-300 hover:underline mt-2">перегенерить</button>` : '';
+  const savePersona = !j.portrait_key ? ''
+    : (j.portrait_key === PERSONA
+        ? '<span class="chip chip-done mt-2 inline-block">персона ✓</span>'
+        : `<button onclick="savePersona(${j.id})" class="text-xs text-amber-300 hover:underline mt-2 ml-3">сохранить девушку</button>`);
   return `<div class="glass p-4 flex gap-4">
     <div class="shrink-0 w-[160px] md:w-[200px]">${media}</div>
     <div class="min-w-0 flex-1">
@@ -194,7 +257,7 @@ function card(j) {
         ${judgeBadge(j)}
       </div>
       <div class="mt-2 flex items-center gap-1 flex-wrap">${chips(j)}</div>
-      ${err}${retry}
+      ${err}${retry}${savePersona}
     </div>
   </div>`;
 }
@@ -245,6 +308,11 @@ async function createJob() {
   fd.append('voice_style', document.querySelector('input[name=voice]:checked').value);
   fd.append('captions_enabled', document.getElementById('f-captions').checked);
   fd.append('cutaways_enabled', document.getElementById('f-cutaways').checked);
+  const personaMode = document.querySelector('input[name=persona]:checked').value;
+  fd.append('use_persona', personaMode !== 'new');
+  if (personaMode === 'look') {
+    fd.append('look_prompt', document.getElementById('f-look').value);
+  }
   const hook = document.getElementById('f-hook').files[0];
   if (hook) fd.append('hook_video', hook);
 
@@ -263,7 +331,7 @@ async function retryJob(id) {
   loadJobs();
 }
 
-loadJobs();
+loadPersona().then(loadJobs);
 setInterval(loadJobs, 5000);
 </script>
 </body>

@@ -94,6 +94,10 @@ class StudioJobListResponse(BaseModel):
     items: list[StudioJobResponse]
 
 
+class PersonaSaveRequest(BaseModel):
+    job_id: int
+
+
 class ScriptRequest(BaseModel):
     product_name: str
     brand: str
@@ -112,6 +116,26 @@ def _get_owned(db: Session, user: User, jid: int) -> StudioJob:
     if not j:
         raise HTTPException(404, "studio job not found")
     return j
+
+
+@router.get("/persona")
+def get_persona(current_user: User = Depends(get_current_user)):
+    return {"persona_key": current_user.studio_persona_key}
+
+
+@router.post("/persona")
+def save_persona(
+    req: PersonaSaveRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Сделать девушку из указанного job'а постоянной персоной Studio."""
+    j = _get_owned(db, current_user, req.job_id)
+    if not j.portrait_key:
+        raise HTTPException(400, "у этого job'а нет портрета")
+    current_user.studio_persona_key = j.portrait_key
+    db.commit()
+    return {"persona_key": current_user.studio_persona_key}
 
 
 @router.get("/jobs/", response_model=StudioJobListResponse)
@@ -145,6 +169,8 @@ async def create_job(
     voice_style: str = Form("normal"),
     captions_enabled: bool = Form(True),
     cutaways_enabled: bool = Form(True),
+    use_persona: bool = Form(True),
+    look_prompt: Optional[str] = Form(None),
     hook_video: Optional[UploadFile] = File(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -180,6 +206,8 @@ async def create_job(
             voice_style=voice_style,
             captions_enabled=captions_enabled,
             cutaways_enabled=cutaways_enabled,
+            use_persona=use_persona,
+            look_prompt=look_prompt,
             hook_video=hook_pair,
         )
     except StudioValidationError as e:
